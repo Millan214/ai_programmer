@@ -53,4 +53,20 @@ From the repo root: `make check && make test` still green.
 
 ## Notes
 
-_(fill in as you go)_
+- IDs use a Python-side `default=uuid.uuid4` on `mapped_column`, not a DB-side `gen_random_uuid()`.
+  Avoids depending on the `pgcrypto` extension in Phase 0. Consequence: a `Task()` etc. instance
+  has `id is None` until it's flushed to a session — don't assert on `.id` before `flush()`.
+- Repository functions take an `AsyncSession` as the first arg and `flush()` but never `commit()`.
+  Callers (the orchestrator, later) own the transaction boundary.
+- **Windows gotcha:** psycopg's async mode refuses to run under the default Windows
+  `ProactorEventLoop` (raises `InterfaceError`). Fixed in `packages/db/tests/conftest.py` via
+  `pytest_asyncio_loop_factories` → `SelectorEventLoop`, scoped to this package's tests only —
+  deliberately not forced globally in `platform_db/session.py`, since card 06 (Docker sandbox)
+  will likely need Proactor for async subprocess support on Windows dev machines. Any
+  Windows-hosted service that mixes DB async calls with subprocess async calls will need to
+  reconcile this; flag it when 06 lands.
+- `pytest -q` run from `packages/db/` resolves its ini config from the **root** `pyproject.toml`
+  (pytest walks up until it finds one, and `packages/db` doesn't define its own
+  `[tool.pytest.ini_options]`), so it actually collects tests repo-wide via the root `testpaths`,
+  not just this package. Not introduced by this card — inherited from the scaffold — but worth
+  knowing if `pytest -q` from a subpackage ever looks like it ran "too many" tests.

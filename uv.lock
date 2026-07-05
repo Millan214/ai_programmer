@@ -943,12 +943,14 @@ version = "0.0.1"
 source = { editable = "packages/db" }
 dependencies = [
     { name = "alembic" },
+    { name = "psycopg", extra = ["binary"] },
     { name = "sqlalchemy" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.13" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "sqlalchemy", specifier = ">=2.0" },
 ]
 
