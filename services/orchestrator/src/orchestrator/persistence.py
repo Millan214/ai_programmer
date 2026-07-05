@@ -8,8 +8,11 @@ this module writes the *auditable* rows the platform actually queries — one ``
 per run, one ``agent_turn`` per node transition. The DB-backed checkpointer is deferred to
 a follow-up card.
 
-Token/cost fields are placeholder zeros in Phase 0 (non-goal: no cost tracking). Real
-values arrive with the LLM-calling agents in cards 04 and 08.
+Real agents (card 04's Planner and onward) write their own ``agent_turn`` rows through
+``record_agent_turn`` so the row carries the true model/tokens/cost. Phases whose agent
+still fakes it (build/verify/ship in Phase 0) go through ``record_node``, which writes a
+placeholder turn. Either way the graph advances the task_session phase via
+``advance_phase`` — ``record_node`` folds that call in so the fake paths stay tight.
 """
 
 import uuid
@@ -45,8 +48,24 @@ class PersistenceProtocol(Protocol):
 
     async def open_session(self, task_id: uuid.UUID) -> uuid.UUID: ...
 
+    async def advance_phase(self, session_id: uuid.UUID, phase: str) -> None: ...
+
     async def record_node(
         self, session_id: uuid.UUID, phase: str, agent: str, output_ref: str | None = None
+    ) -> None: ...
+
+    async def record_agent_turn(
+        self,
+        *,
+        session_id: uuid.UUID,
+        agent: str,
+        model: str,
+        prompt_version: str,
+        input_tokens: int,
+        output_tokens: int,
+        cost_usd: Decimal | None,
+        tool_calls: dict[str, object] | None = None,
+        output_ref: str | None = None,
     ) -> None: ...
 
     async def set_task_status(self, task_id: uuid.UUID, status: str) -> None: ...
@@ -77,6 +96,11 @@ class OrchestratorPersistence:
             await db.commit()
             return task_session.id
 
+    async def advance_phase(self, session_id: uuid.UUID, phase: str) -> None:
+        async with session_factory()() as db:
+            await sessions.update_phase(db, session_id, phase)
+            await db.commit()
+
     async def record_node(
         self, session_id: uuid.UUID, phase: str, agent: str, output_ref: str | None = None
     ) -> None:
@@ -92,6 +116,34 @@ class OrchestratorPersistence:
                 output_tokens=0,
                 cost_usd=Decimal(0),
                 tool_calls={},
+                output_ref=output_ref,
+            )
+            await db.commit()
+
+    async def record_agent_turn(
+        self,
+        *,
+        session_id: uuid.UUID,
+        agent: str,
+        model: str,
+        prompt_version: str,
+        input_tokens: int,
+        output_tokens: int,
+        cost_usd: Decimal | None,
+        tool_calls: dict[str, object] | None = None,
+        output_ref: str | None = None,
+    ) -> None:
+        async with session_factory()() as db:
+            await turns.create(
+                db,
+                session_id=session_id,
+                agent=agent,
+                model=model,
+                prompt_version=prompt_version,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=cost_usd,
+                tool_calls=tool_calls,
                 output_ref=output_ref,
             )
             await db.commit()

@@ -980,6 +980,22 @@ requires-dist = [
 name = "platform-planner"
 version = "0.0.1"
 source = { editable = "agents/planner" }
+dependencies = [
+    { name = "anthropic" },
+    { name = "platform-db" },
+    { name = "platform-orchestrator" },
+    { name = "platform-prompts" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "anthropic", specifier = ">=0.40" },
+    { name = "platform-db", editable = "packages/db" },
+    { name = "platform-orchestrator", editable = "services/orchestrator" },
+    { name = "platform-prompts", editable = "prompts" },
+    { name = "pydantic", specifier = ">=2.0" },
+]
 
 [[package]]
 name = "platform-prompts"

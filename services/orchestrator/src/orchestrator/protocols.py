@@ -7,10 +7,17 @@ Phase 0 protocols exchange JSON-serializable dicts, not the concrete Pydantic mo
 (``Plan`` etc.) that later cards introduce. This keeps the dependency arrow one-way
 (planner/developer packages depend on the orchestrator's protocols, never the reverse)
 and matches what the graph carries in ``TaskState`` and what Postgres stores as JSONB.
-When card 04 gives the Planner a real ``Plan`` model, its ``plan()`` should return
-``plan.model_dump()`` to keep satisfying ``PlannerProtocol``.
+The real ``PlannerAgent`` wraps its typed ``Plan`` back to a dict at the protocol
+boundary (see ``planner.adapter``).
+
+``PlannerProtocol.plan`` also carries ``session_id`` so a real agent can write its
+own ``agent_turn`` row (with the true model/tokens/cost) via the ``TurnRecorder`` it
+was constructed with. Fakes ignore it. Developer/Verifier stay dict-only in Phase 0;
+their cards will extend when they need to persist real turns.
 """
 
+import uuid
+from decimal import Decimal
 from typing import Protocol
 
 PlanDict = dict[str, object]
@@ -18,8 +25,30 @@ EditsDict = dict[str, object]
 VerifierFacts = dict[str, object]
 
 
+class TurnRecorder(Protocol):
+    """Callable that persists an ``agent_turn`` row on behalf of a real agent.
+
+    Bound at wiring time to ``PersistenceProtocol.record_agent_turn``. Kept as its own
+    small protocol so agents don't take a dependency on the full persistence surface.
+    """
+
+    async def __call__(
+        self,
+        *,
+        session_id: uuid.UUID,
+        agent: str,
+        model: str,
+        prompt_version: str,
+        input_tokens: int,
+        output_tokens: int,
+        cost_usd: Decimal | None,
+        tool_calls: dict[str, object] | None = None,
+        output_ref: str | None = None,
+    ) -> None: ...
+
+
 class PlannerProtocol(Protocol):
-    async def plan(self, task_description: str) -> PlanDict: ...
+    async def plan(self, task_description: str, session_id: uuid.UUID) -> PlanDict: ...
 
 
 class DeveloperProtocol(Protocol):
@@ -31,9 +60,29 @@ class VerifierProtocol(Protocol):
 
 
 class FakePlanner:
-    """Returns a fixed stub plan. Replaced by card 04's PlannerAgent."""
+    """Returns a fixed stub plan. Replaced by card 04's PlannerAgent.
 
-    async def plan(self, task_description: str) -> PlanDict:
+    Accepts an optional ``TurnRecorder`` so fake-planner runs still write an
+    ``agent_turn`` row (a placeholder one), matching the shape of what the real
+    Planner will write. Card 03's DB integration test relies on this to see four turns
+    per run.
+    """
+
+    def __init__(self, recorder: TurnRecorder | None = None) -> None:
+        self._recorder = recorder
+
+    async def plan(self, task_description: str, session_id: uuid.UUID) -> PlanDict:
+        if self._recorder is not None:
+            await self._recorder(
+                session_id=session_id,
+                agent="planner",
+                model="fake",
+                prompt_version="planner@fake",
+                input_tokens=0,
+                output_tokens=0,
+                cost_usd=Decimal(0),
+                tool_calls={},
+            )
         return {
             "subtasks": [
                 {

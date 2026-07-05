@@ -1,2 +1,106 @@
+"""PlannerAgent — first real LLM agent in the platform.
+
+Decomposes a task description into a structured ``Plan`` by prompting an Anthropic
+Claude model. Persists the call as an ``agent_turn`` row through the ``TurnRecorder``
+it was constructed with, so the row carries real model/tokens/cost rather than the
+placeholder values card 03 used for its fake path.
+
+Non-goals (per card 04): no tool use, no streaming, no prompt caching, no fallback
+model, no plan-revision loop. Exactly one retry on a malformed JSON response, then
+``PlannerOutputError`` bubbles.
+"""
+
+import json
+import os
+import uuid
+from typing import cast
+
+from anthropic import AsyncAnthropic
+from anthropic.types import Message, TextBlock
+from orchestrator.protocols import TurnRecorder
+from prompts.registry import PromptRef, active_version, render
+from pydantic import ValidationError
+
+from planner.models import Plan, PlannerOutputError
+from planner.pricing import compute_cost
+
+_DEFAULT_MODEL_ENV = "PLANNER_MODEL"
+_DEFAULT_MODEL = "claude-opus-4-7"
+_MAX_TOKENS = 2000
+_PROMPT_AGENT = "planner"
+_PROMPT_NAME = "plan"
+
+
 class PlannerAgent:
-    """Decomposes a submitted task into a plan. Stub — see 04-planner-agent.md."""
+    """Concrete Planner. Adapt via ``PlannerProtocolAdapter`` to satisfy the protocol."""
+
+    def __init__(
+        self,
+        *,
+        recorder: TurnRecorder,
+        client: AsyncAnthropic | None = None,
+        model: str | None = None,
+    ) -> None:
+        self._recorder = recorder
+        self._client = client if client is not None else AsyncAnthropic()
+        self._model = model or os.environ.get(_DEFAULT_MODEL_ENV) or _DEFAULT_MODEL
+
+    async def plan(self, task_description: str, session_id: uuid.UUID) -> Plan:
+        version = active_version(_PROMPT_AGENT, _PROMPT_NAME)
+        prompt = render(
+            PromptRef(agent=_PROMPT_AGENT, name=_PROMPT_NAME, version=version),
+            task_description=task_description,
+        )
+
+        response = await self._call_model(prompt)
+        try:
+            plan = _parse(_extract_text(response))
+        except PlannerOutputError:
+            # One retry — the prompt is explicit about JSON-only, so a re-roll usually
+            # recovers. Any second failure is surfaced to the caller.
+            response = await self._call_model(prompt)
+            plan = _parse(_extract_text(response))
+
+        await self._record_turn(session_id, version, response)
+        return plan
+
+    async def _call_model(self, prompt: str) -> Message:
+        return await self._client.messages.create(
+            model=self._model,
+            max_tokens=_MAX_TOKENS,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+    async def _record_turn(
+        self, session_id: uuid.UUID, prompt_version: str, response: Message
+    ) -> None:
+        input_tokens = response.usage.input_tokens
+        output_tokens = response.usage.output_tokens
+        await self._recorder(
+            session_id=session_id,
+            agent="planner",
+            model=self._model,
+            prompt_version=f"{_PROMPT_AGENT}/{_PROMPT_NAME}@{prompt_version}",
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=compute_cost(self._model, input_tokens, output_tokens),
+            tool_calls=None,
+        )
+
+
+def _extract_text(response: Message) -> str:
+    for block in response.content:
+        if isinstance(block, TextBlock):
+            return block.text
+    raise PlannerOutputError("model response contained no text block")
+
+
+def _parse(text: str) -> Plan:
+    try:
+        payload = cast(object, json.loads(text))
+    except json.JSONDecodeError as exc:
+        raise PlannerOutputError(f"planner output was not JSON: {exc}") from exc
+    try:
+        return Plan.model_validate(payload)
+    except ValidationError as exc:
+        raise PlannerOutputError(f"planner output did not match Plan schema: {exc}") from exc

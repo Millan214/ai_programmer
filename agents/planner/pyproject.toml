@@ -3,7 +3,13 @@ name = "platform-planner"
 version = "0.0.1"
 description = "Planner agent: decomposes a submitted task into a plan."
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "anthropic>=0.40",
+    "pydantic>=2.0",
+    "platform-db",
+    "platform-prompts",
+    "platform-orchestrator",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -11,3 +17,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/planner"]
+
+[tool.uv.sources]
+platform-db = { workspace = true }
+platform-prompts = { workspace = true }
+platform-orchestrator = { workspace = true }

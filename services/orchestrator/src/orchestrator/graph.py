@@ -50,10 +50,11 @@ class Orchestrator:
         self._persistence = persistence
 
     async def _plan_node(self, state: TaskState) -> dict[str, object]:
-        plan = await self._planner.plan(state["task_description"])
-        await self._persistence.record_node(
-            uuid.UUID(state["session_id"]), "plan", "planner"
-        )
+        session_id = uuid.UUID(state["session_id"])
+        # The planner (real or fake) writes its own ``agent_turn`` row via the
+        # ``TurnRecorder`` it was constructed with; the graph only advances the phase.
+        plan = await self._planner.plan(state["task_description"], session_id)
+        await self._persistence.advance_phase(session_id, "plan")
         return {"plan": plan, "phase": "plan"}
 
     async def _build_node(self, state: TaskState) -> dict[str, object]:
