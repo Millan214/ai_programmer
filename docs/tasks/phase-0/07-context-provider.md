@@ -81,4 +81,17 @@ curl -X POST http://localhost:8002/retrieve \
 
 ## Notes
 
-_(fill in as you go — including any surprises with MCP client libraries, transport modes, tool schemas)_
+- No real MCP SDK dependency was added. `GraphifyClient`/`CRGClient` speak plain HTTP
+  (`POST {base_url}/tools/{tool}`), the same shelling-out-over-HTTP convention as
+  `orchestrator.verifier_client`. Neither Graphify nor CRG's actual MCP wire format was
+  available to test against in this environment, so the call shape is a placeholder;
+  swapping in a real MCP transport later only touches `_call_tool` in each client.
+- `target-repos/demo-lib/` does not exist yet and neither tool is installed anywhere in
+  this repo — the prereq in this card is unmet. `tests/test_service_integration.py` is
+  written and gated on `GRAPHIFY_MCP_URL`/`CRG_MCP_URL` being set, but was never actually
+  run against live servers; it's currently always skipped. Standing up `demo-lib` with
+  Graphify + CRG indexed is follow-up work before this integration test can run for
+  real.
+- `router.retrieve` takes `repo` as a parameter (matches the `POST /retrieve` body) but
+  doesn't use it for routing — Phase 0 is single-repo only per this card's non-goals.
+- Service listens on port 8003 by default (8001 verifier, 8002 sandbox already taken).
