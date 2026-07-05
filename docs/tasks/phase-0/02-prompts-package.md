@@ -58,4 +58,34 @@ python -c "from prompts.registry import load, PromptRef; \
 
 ## Notes
 
-_(fill in as you go)_
+- **Rendering uses `str.format_map()`, not jinja2.** Placeholders are flat vars
+  (`{task_description}`, `{plan}`, `{repo_map}`) — no conditionals/loops needed yet, and it avoids
+  a template-engine dependency for Phase 0. Missing variables raise `PromptRenderError` (wraps the
+  underlying `KeyError`). Note the card text used `{{double_brace}}` notation; since we picked
+  `format_map` the actual placeholder syntax in the `.md` files is single-brace `{var}`.
+- **`versions.toml` lives at `prompts/` (package root, sibling to `src/`)**, not inside
+  `src/prompts/`. `registry.py` locates it via `Path(__file__).resolve().parents[1]`.
+- **Prompt-authoring convention that follows from `format_map`:** literal `{`/`}` in prompt
+  content must be doubled (`{{`/`}}`). The planner prompt's JSON output skeleton does this; an
+  unescaped brace shows up as `PromptRenderError` (or worse, a silently mangled prompt) at render
+  time. `tests/test_registry.py` has structural pins that render both v1 prompts end-to-end, so a
+  bad escape fails CI. Values substituted *into* slots are never re-formatted, so task
+  descriptions/plans containing braces or JSON are safe.
+- v1 content is real, not placeholder: planner pins the JSON contract that card 04's `Plan` model
+  parses (`subtasks[].title/description/acceptance`, `risks`, `estimated_files`); developer names
+  card 08's exact tool surface (`retrieve`, `read_file`, `edit_file`, `run_verifier`) and encodes
+  ADR-0006 (verifier facts only) plus the stuck-loop rule. If cards 04/08 change either contract,
+  bump to v2 — the structural tests will point at the mismatch.
+- **Real pytest gotcha, cost real debugging time:** this workspace member's directory is named
+  `prompts/`, identical to the installed package's import name (`prompts`). Pytest's
+  `--import-mode=importlib`, when it can't resolve a test file's module name via a real
+  `__init__.py` chain, falls back to synthesizing a dotted name *relative to rootdir*
+  (`prompts.tests.test_registry`) and injects a bogus namespace module into `sys.modules["prompts"]`
+  pointing at the bare `prompts/` directory — which shadows the real editable-installed package and
+  breaks `from prompts.registry import ...` inside the test file itself. Every other workspace
+  member dodges this by accident (their directory name, e.g. `db`, doesn't match their import name,
+  e.g. `platform_db`). **Fix:** added an empty `prompts/tests/__init__.py`, which gives pytest a
+  real `__init__.py` chain to resolve (`tests.test_registry`) instead of hitting the buggy rootdir
+  fallback. No other test directory in the repo has an `__init__.py`; don't add one there
+  reflexively — only `prompts/tests/` needs it, precisely because of the name collision above. If a
+  future package's workspace folder name ever matches its import name, expect the same failure.

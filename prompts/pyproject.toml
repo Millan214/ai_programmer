@@ -3,7 +3,9 @@ name = "platform-prompts"
 version = "0.0.1"
 description = "Versioned prompt registry, imported by agents."
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pydantic>=2.0",
+]
 
 [build-system]
 requires = ["hatchling"]
