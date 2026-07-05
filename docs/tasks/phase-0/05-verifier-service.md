@@ -64,4 +64,42 @@ curl -X POST http://localhost:8001/verify \
 
 ## Notes
 
-_(fill in as you go)_
+Several deviations from the spec's literal tool invocations, all found by running the
+real toolchain against the fixtures before writing parsers (not guessed):
+
+- **`pnpm test --reporter=json` doesn't work.** Bare, pnpm parses the flag as its own
+  unrecognized option and drops it silently. The documented fix (a `--` separator) was
+  itself unreliable — it worked from an interactive shell but forwarded the `--` itself
+  as a literal arg to vitest when spawned via `create_subprocess_shell`. Runner uses
+  `pnpm exec vitest run --reporter=json` instead, same as the lint/typecheck runners.
+- **`tsc` writes `file(line,col): error TSxxxx: ...` to stdout, not stderr** — for both
+  `--noEmit` and a real build. `build()`/`typecheck()` parse combined stdout+stderr.
+- **Windows: `pnpm`/`biome`/`tsc` resolve to `.cmd` shims**, which
+  `asyncio.create_subprocess_exec` can't launch directly (`CreateProcess` needs a real
+  PE executable). `runners/pnpm.py::_run` falls back to `create_subprocess_shell` on
+  `win32`.
+- **`biome check` bundles formatter checks in with linting** by default (and defaults to
+  tab indentation), which would fail a fixture on style alone. Fixture `biome.json`
+  disables `formatter`/`organizeImports` so `check` == pure linting, matching ADR-0006's
+  "Lint" facet. `--reporter=json` is stable enough in practice despite biome's own
+  "unstable/experimental" stderr warning.
+- **Fixture installs needed walling off from the repo's root pnpm workspace.** Even
+  though `pnpm-workspace.yaml` at the repo root only globs `apps/*`, running `pnpm
+  install` inside a fixture still got silently absorbed into that workspace (no error,
+  no local `node_modules` — a real footgun). Each fixture has its own
+  `pnpm-workspace.yaml` (empty `packages:`, implicitly walling it off) with `allowBuilds`
+  set for `@biomejs/biome`/`esbuild` so pnpm's build-script-approval prompt doesn't turn
+  into a nonzero exit code in non-interactive installs.
+- **Parsers use small internal Pydantic models** (`_VitestReport`, `_BiomeReport`, etc.)
+  instead of manual `dict[str, object].get(...)` chains — pyright strict can't narrow
+  `object` far enough for the manual version without a wall of `isinstance` checks.
+
+**Orchestrator wiring:** `graph.py`'s `_verify_node` needed no changes — it already
+calls `self._verifier.verify(edits)` through the protocol. The real wiring is
+`orchestrator/verifier_client.py` (`VerifierHttpClient`, flattens `VerifierResult` to
+the `{"build": "pass"/"fail", ...}` shape `_verify_passed` already routes on) plus a
+`VERIFIER_URL` env-var gate in `main.py`, mirroring card 04's `ANTHROPIC_API_KEY` gate
+for the Planner. It's real and tested (mocked transport) but functionally dormant until
+card 08's Developer agent starts putting a `worktree_path` in `edits` — there's no real
+checkout to verify yet without it, and the client raises clearly rather than faking a
+result if that key is missing.

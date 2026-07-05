@@ -33,6 +33,7 @@ dev = [
     { name = "alembic" },
     { name = "anthropic" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "langgraph" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp" },
@@ -53,6 +54,7 @@ dev = [
     { name = "alembic", specifier = ">=1.13" },
     { name = "anthropic", specifier = ">=0.40" },
     { name = "fastapi", specifier = ">=0.115" },
+    { name = "httpx", specifier = ">=0.27" },
     { name = "langgraph", specifier = ">=0.2" },
     { name = "opentelemetry-api", specifier = ">=1.27" },
     { name = "opentelemetry-exporter-otlp", specifier = ">=1.27" },
@@ -964,6 +966,7 @@ name = "platform-orchestrator"
 version = "0.0.1"
 source = { editable = "services/orchestrator" }
 dependencies = [
+    { name = "httpx" },
     { name = "langchain-core" },
     { name = "langgraph" },
     { name = "platform-db" },
@@ -971,6 +974,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "httpx", specifier = ">=0.27" },
     { name = "langchain-core", specifier = ">=0.3" },
     { name = "langgraph", specifier = ">=1.0" },
     { name = "platform-db", editable = "packages/db" },
@@ -1032,6 +1036,18 @@ source = { editable = "packages/telemetry" }
 name = "platform-verifier"
 version = "0.0.1"
 source = { editable = "services/verifier" }
+dependencies = [
+    { name = "fastapi" },
+    { name = "pydantic" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "uvicorn", specifier = ">=0.32" },
+]
 
 [[package]]
 name = "pluggy"

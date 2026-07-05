@@ -1,9 +1,9 @@
 """Entry point: run a submitted task through the outer FSM.
 
 Card 04 wires the real ``PlannerAgent`` in place of ``FakePlanner`` whenever an
-Anthropic API key is available; otherwise we fall back to the fake so the graph still
-runs end-to-end in offline environments (CI without secrets, local `make test` without
-a network, etc.).
+Anthropic API key is available; card 05 does the same for the Verifier, keyed off
+``VERIFIER_URL``. Both fall back to their fakes so the graph still runs end-to-end in
+offline environments (CI without secrets, local `make test` without a network, etc.).
 """
 
 import os
@@ -19,6 +19,7 @@ from orchestrator.protocols import (
     PlannerProtocol,
     VerifierProtocol,
 )
+from orchestrator.verifier_client import VerifierHttpClient
 
 
 def _build_planner(persistence: OrchestratorPersistence) -> PlannerProtocol:
@@ -34,12 +35,26 @@ def _build_planner(persistence: OrchestratorPersistence) -> PlannerProtocol:
     return PlannerProtocolAdapter(agent)
 
 
+def _build_verifier() -> VerifierProtocol:
+    """Real Verifier if a service URL is configured, fake otherwise.
+
+    The real client needs ``edits["worktree_path"]``, which only exists once card 08's
+    Developer agent produces real edits against a real sandbox checkout (cards 06/07).
+    Until then this stays fake even when ``VERIFIER_URL`` is set in a partially-deployed
+    environment — there's nothing on disk yet for the real Verifier to inspect.
+    """
+    verifier_url = os.environ.get("VERIFIER_URL")
+    if not verifier_url:
+        return FakeVerifier()
+    return VerifierHttpClient(verifier_url)
+
+
 def default_orchestrator() -> Orchestrator:
-    """Wire the graph with the real Planner (if creds are available) plus Phase 0 fakes."""
+    """Wire the graph with the real Planner/Verifier (if configured) plus Phase 0 fakes."""
     persistence = OrchestratorPersistence()
     planner: PlannerProtocol = _build_planner(persistence)
     developer: DeveloperProtocol = FakeDeveloper()
-    verifier: VerifierProtocol = FakeVerifier()
+    verifier: VerifierProtocol = _build_verifier()
     return Orchestrator(
         planner=planner,
         developer=developer,

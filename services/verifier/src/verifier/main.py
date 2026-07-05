@@ -1,2 +1,11 @@
+"""Uvicorn entry point. ``uvicorn verifier.main:app`` serves the Verifier's FastAPI app."""
+
+import uvicorn
+
+from verifier.service import app
+
+__all__ = ["app"]
+
+
 def run() -> None:
-    """Entry point for the verifier. Stub — see docs/tasks/phase-0/05-verifier-service.md."""
+    uvicorn.run(app, host="0.0.0.0", port=8001)
