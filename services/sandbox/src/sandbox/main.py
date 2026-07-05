@@ -1,2 +1,12 @@
+"""Uvicorn entry point. ``uvicorn sandbox.main:app`` serves the sandbox controller's
+FastAPI app."""
+
+import uvicorn
+
+from sandbox.service import app
+
+__all__ = ["app"]
+
+
 def run() -> None:
-    """Entry point for the sandbox controller. Stub — see 06-sandbox-docker.md."""
+    uvicorn.run(app, host="0.0.0.0", port=8002)

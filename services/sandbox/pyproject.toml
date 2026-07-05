@@ -3,7 +3,11 @@ name = "platform-sandbox"
 version = "0.0.1"
 description = "Docker-based sandbox controller for isolated task execution."
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "pydantic>=2.0",
+]
 
 [build-system]
 requires = ["hatchling"]

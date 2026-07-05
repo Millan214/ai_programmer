@@ -78,4 +78,23 @@ asyncio.run(main())
 
 ## Notes
 
-_(fill in as you go)_
+- Shelled out to the `git` and `docker` CLIs directly (`asyncio.create_subprocess_exec`),
+  matching the Verifier's runner pattern, instead of adding the `docker` Python SDK as a
+  dependency — one less library to pin, and CLI output is what a human debugging by hand
+  would see.
+- `destroy()` needs the sandbox's main repo path to run `git worktree remove`, but
+  `SandboxHandle` (per the card's spec) only carries `worktree_path`/`container_id`/`id`.
+  Resolved by shelling out to `git rev-parse --path-format=absolute --git-common-dir` from
+  inside the worktree before removing it, rather than widening the handle model.
+- `uv sync` (no flags) does not install workspace members as editable packages in this
+  repo — `uv sync --all-packages` (what `make install` runs) does. Without it, every
+  service's own tests fail to import (`ModuleNotFoundError`), not just sandbox's. Worth
+  remembering when a fresh clone's tests mysteriously can't import the package under test.
+- Added `src/sandbox/py.typed`, which was missing — without it, pyright treats the
+  installed `sandbox` package as untyped (`reportMissingTypeStubs`) even though it ships
+  inline types. `verifier` already had this marker; `sandbox` didn't.
+- Docker daemon was not running in this dev environment, so `test_controller.py`'s two
+  integration tests were verified to skip cleanly (`_docker_available()` guard) rather than
+  run end-to-end. The image build and real spawn/exec/diff/destroy flow from the card's
+  "Success criteria" section still need a manual pass wherever Docker Desktop (or an
+  equivalent daemon) is actually running.
