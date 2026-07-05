@@ -1,0 +1,53 @@
+[project]
+name = "ai-coding-platform"
+version = "0.0.1"
+description = "AI Coding Platform — Phase 0 monorepo root."
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["prompts", "services/*", "agents/*", "packages/*"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+    "pyright>=1.1.390",
+    "alembic>=1.13",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.2",
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "langgraph>=0.2",
+    "anthropic>=0.40",
+    "opentelemetry-api>=1.27",
+    "opentelemetry-sdk>=1.27",
+    "opentelemetry-exporter-otlp>=1.27",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pyright]
+include = ["services", "agents", "packages", "prompts"]
+exclude = ["**/.venv", "**/node_modules", "**/__pycache__"]
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+strict = ["services", "agents"]
+
+[tool.pytest.ini_options]
+testpaths = ["prompts", "services", "agents", "packages"]
+addopts = "-q --import-mode=importlib"
+markers = [
+    "integration: requires `make up` (Postgres, Jaeger, MinIO); skipped by default",
+    "e2e: submits a task and asserts a PR opens; slow, run in CI nightly",
+]
