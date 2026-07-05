@@ -10,12 +10,12 @@ async def create(
     *,
     session_id: uuid.UUID,
     worktree_ref: str,
-    build: dict | None = None,
-    typecheck: dict | None = None,
-    tests: dict | None = None,
-    coverage: dict | None = None,
-    lint: dict | None = None,
-    scanners: dict | None = None,
+    build: dict[str, object] | None = None,
+    typecheck: dict[str, object] | None = None,
+    tests: dict[str, object] | None = None,
+    coverage: dict[str, object] | None = None,
+    lint: dict[str, object] | None = None,
+    scanners: dict[str, object] | None = None,
 ) -> VerifierRun:
     run = VerifierRun(
         session_id=session_id,

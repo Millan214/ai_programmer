@@ -34,7 +34,7 @@ class TaskSession(Base):
         UUID(as_uuid=True), ForeignKey("task.id"), nullable=False
     )
     phase: Mapped[str] = mapped_column(nullable=False)
-    supervisor_state: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    supervisor_state: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     started_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
     ended_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
@@ -52,7 +52,7 @@ class AgentTurn(Base):
     input_tokens: Mapped[int] = mapped_column(nullable=False)
     output_tokens: Mapped[int] = mapped_column(nullable=False)
     cost_usd: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
-    tool_calls: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    tool_calls: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     output_ref: Mapped[str | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
 
@@ -65,10 +65,10 @@ class VerifierRun(Base):
         UUID(as_uuid=True), ForeignKey("task_session.id"), nullable=False
     )
     worktree_ref: Mapped[str] = mapped_column(nullable=False)
-    build: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    typecheck: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    tests: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    coverage: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    lint: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    scanners: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    build: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    typecheck: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    tests: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    coverage: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    lint: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    scanners: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)

@@ -16,7 +16,7 @@ async def create(
     input_tokens: int,
     output_tokens: int,
     cost_usd: Decimal | None = None,
-    tool_calls: dict | None = None,
+    tool_calls: dict[str, object] | None = None,
     output_ref: str | None = None,
 ) -> AgentTurn:
     turn = AgentTurn(

@@ -10,7 +10,7 @@ async def create(
     *,
     task_id: uuid.UUID,
     phase: str,
-    supervisor_state: dict | None = None,
+    supervisor_state: dict[str, object] | None = None,
 ) -> TaskSession:
     task_session = TaskSession(task_id=task_id, phase=phase, supervisor_state=supervisor_state)
     session.add(task_session)

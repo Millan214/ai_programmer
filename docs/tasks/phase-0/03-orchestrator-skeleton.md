@@ -64,4 +64,35 @@ Postgres shows the task in `completed` status, with one `task_session` and four 
 
 ## Notes
 
-_(fill in as you go)_
+- **"LangGraph checkpointer backed by packages/db" was deferred — decision, not omission.**
+  A conformant `BaseCheckpointSaver` needs a `checkpoints` table, which the card-01 schema
+  doesn't define, and card 01 owns the schema (no ad-hoc tables). So Phase 0 splits the concern:
+  the graph uses LangGraph's in-memory `MemorySaver` for run-local checkpointing, and
+  `persistence.py` writes the *auditable* rows the ADR actually cares about (one `task_session`
+  per run, one `agent_turn` per node transition). Follow-up card `12-db-checkpointer.md` spawned
+  for the real Postgres-backed checkpointer (needs a schema migration → Alembic + card-01 owner).
+- **Ship's "fake PR URL" is stored on the ship `agent_turn`'s `output_ref`**, because the `task`
+  table has no PR/URL column in the card-01 schema (and card 01 explicitly defers `pr`/`review`
+  tables). This keeps it auditable without a schema change. Design question flagged for review: if
+  a first-class PR reference is wanted on `task` before Phase 1's merge coordinator, that's a
+  card-01 migration.
+- **Protocols exchange dicts, not Pydantic models.** `PlannerProtocol.plan -> dict[str, object]`
+  etc., so the dependency arrow stays one-way (planner/developer packages → orchestrator
+  protocols, never the reverse) and matches LangGraph state + JSONB storage. Card 04 says
+  `PlannerAgent.plan -> Plan`; to keep satisfying the protocol, its impl should return
+  `plan.model_dump()`. Noted at the top of `protocols.py`.
+- **`TaskState` carries two fields beyond the card's six:** `session_id` (FK linkage for every
+  `agent_turn`) and `task_description` (the Planner's input). Both are mechanical plumbing, not new
+  domain state.
+- **Tightened card-01's db types as a side effect:** the repositories/models used bare `dict`,
+  which reads as `dict[Unknown, Unknown]` and fails pyright strict the moment strict code
+  (services) imports them. Changed to `dict[str, object]` across `models.py` and the repositories.
+  Also added `py.typed` markers to `platform_db`, `orchestrator`, and `prompts` — without them,
+  strict-mode imports of our own packages raise `reportMissingTypeStubs`. These are prerequisites
+  every future service/agent card would otherwise re-hit; done once here.
+- **Two pyright rules are disabled for `graph.py` only** (`reportMissingTypeStubs`,
+  `reportUnknownMemberType`), documented inline: LangGraph 1.2 ships no stubs for `langgraph.graph`
+  and types `add_node`/`compile` with partially-unknown generics. The file is pure LangGraph glue
+  covered by `test_graph.py`; our own logic keeps full strict typing.
+- **Windows:** same psycopg selector-loop gotcha as card 01; `tests/conftest.py` sets the
+  `SelectorEventLoop` factory. See [[card-01]] notes.

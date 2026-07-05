@@ -963,6 +963,18 @@ source = { editable = "agents/developer" }
 name = "platform-orchestrator"
 version = "0.0.1"
 source = { editable = "services/orchestrator" }
+dependencies = [
+    { name = "langchain-core" },
+    { name = "langgraph" },
+    { name = "platform-db" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "langchain-core", specifier = ">=0.3" },
+    { name = "langgraph", specifier = ">=1.0" },
+    { name = "platform-db", editable = "packages/db" },
+]
 
 [[package]]
 name = "platform-planner"

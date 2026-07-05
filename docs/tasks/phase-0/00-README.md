@@ -18,6 +18,14 @@ Eleven cards, ordered. Complete in sequence — later cards assume earlier ones.
 
 **Total:** ~32h of focused work. Phase 0 timebox is 6 weeks; the remaining time absorbs debugging, target-repo prep, and the surprises that always show up.
 
+### Follow-up cards (spawned mid-Phase-0)
+
+Not part of the original ordered eleven; discovered while working a card and split out rather than smuggled into scope.
+
+| # | Card | Effort | Depends on | Spawned by |
+|---|---|---|---|---|
+| 12 | Postgres-backed LangGraph checkpointer | ~3h | 01, 03 | 03 |
+
 ## Card conventions
 
 Each card has:
