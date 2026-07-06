@@ -9,6 +9,8 @@ import asyncio
 from pathlib import Path
 from uuid import UUID
 
+from platform_telemetry import traced
+
 from sandbox.models import ExecResult, SandboxHandle
 
 IMAGE = "platform-sandbox:phase0"
@@ -50,6 +52,7 @@ async def _repo_root(worktree_path: Path) -> Path:
     return Path(stdout.strip()).parent
 
 
+@traced("sandbox.spawn")
 async def spawn(
     repo_path: Path,
     task_id: UUID,
@@ -124,6 +127,7 @@ async def _run_with_timeout(cmd: list[str], timeout_s: int) -> tuple[int, str, s
         raise SandboxError(f"command timed out after {timeout_s}s: {cmd}") from exc
 
 
+@traced("sandbox.exec")
 async def exec(handle: SandboxHandle, command: list[str], timeout_s: int = 300) -> ExecResult:
     try:
         code, stdout, stderr = await asyncio.wait_for(
@@ -145,6 +149,7 @@ async def get_diff(handle: SandboxHandle) -> str:
     return stdout
 
 
+@traced("sandbox.destroy")
 async def destroy(handle: SandboxHandle) -> None:
     await _run(["docker", "rm", "-f", handle.container_id])
     repo_root = await _repo_root(handle.worktree_path)

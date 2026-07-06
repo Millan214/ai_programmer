@@ -11,6 +11,7 @@ dependencies = [
     "click>=8.1",
     "platform-db",
     "platform-orchestrator",
+    "platform-telemetry",
 ]
 
 [project.scripts]
@@ -26,3 +27,4 @@ packages = ["src/task_api"]
 [tool.uv.sources]
 platform-db = { workspace = true }
 platform-orchestrator = { workspace = true }
+platform-telemetry = { workspace = true }

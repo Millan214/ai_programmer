@@ -113,4 +113,9 @@ def default_orchestrator() -> Orchestrator:
 
 async def run(task_id: uuid.UUID) -> None:
     """Load the task, drive it through Plan/Build/Verify/Ship, and persist the outcome."""
+    # Process entry point: set up tracing once here (idempotent) rather than inside
+    # ``execute``, so unit tests that drive the graph directly don't touch global state.
+    from platform_telemetry import configure
+
+    configure("orchestrator")
     await default_orchestrator().execute(task_id)

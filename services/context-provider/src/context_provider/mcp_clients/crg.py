@@ -9,6 +9,7 @@ import os
 from typing import cast
 
 import httpx
+from platform_telemetry import traced
 
 from context_provider.models import Community, ImpactResult, Node
 
@@ -21,6 +22,7 @@ class CRGClient:
     def __init__(self, base_url: str | None = None) -> None:
         self._base_url = (base_url or os.environ["CRG_MCP_URL"]).rstrip("/")
 
+    @traced("mcp.crg.call", capture_args=True)
     async def _call_tool(self, tool: str, arguments: dict[str, object]) -> dict[str, object]:
         async with httpx.AsyncClient(timeout=30.0) as client:
             try:

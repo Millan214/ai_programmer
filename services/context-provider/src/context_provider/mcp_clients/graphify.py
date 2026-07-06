@@ -9,6 +9,7 @@ dependency yet. Swapping in a real MCP transport later only touches ``_call_tool
 import os
 
 import httpx
+from platform_telemetry import traced
 
 from context_provider.models import GraphQueryResult, ImpactResult, Node, Path
 
@@ -21,6 +22,7 @@ class GraphifyClient:
     def __init__(self, base_url: str | None = None) -> None:
         self._base_url = (base_url or os.environ["GRAPHIFY_MCP_URL"]).rstrip("/")
 
+    @traced("mcp.graphify.call", capture_args=True)
     async def _call_tool(self, tool: str, arguments: dict[str, object]) -> dict[str, object]:
         async with httpx.AsyncClient(timeout=30.0) as client:
             try:

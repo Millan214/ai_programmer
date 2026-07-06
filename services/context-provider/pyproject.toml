@@ -8,7 +8,11 @@ dependencies = [
     "uvicorn>=0.32",
     "pydantic>=2.0",
     "httpx>=0.27",
+    "platform-telemetry",
 ]
+
+[tool.uv.sources]
+platform-telemetry = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

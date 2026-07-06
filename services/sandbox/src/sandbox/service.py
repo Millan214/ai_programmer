@@ -9,12 +9,13 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, HTTPException
+from platform_telemetry import lifespan_for
 from pydantic import BaseModel
 
 from sandbox.controller import SandboxError, destroy, exec, get_diff, spawn
 from sandbox.models import ExecResult, SandboxHandle
 
-app = FastAPI(title="Sandbox Controller")
+app = FastAPI(title="Sandbox Controller", lifespan=lifespan_for("sandbox"))
 
 _handles: dict[str, SandboxHandle] = {}
 

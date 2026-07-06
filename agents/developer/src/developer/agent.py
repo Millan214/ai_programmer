@@ -31,8 +31,10 @@ from anthropic.types import (
     ToolUseBlock,
     ToolUseBlockParam,
 )
+from opentelemetry import trace
 from orchestrator.protocols import PlanDict, TurnRecorder
 from platform_shared.pricing import compute_cost
+from platform_telemetry import add_llm_attributes, current_span
 from prompts.registry import PromptRef, active_version, render
 from sandbox.models import SandboxHandle
 from verifier.models import VerifierResult
@@ -177,60 +179,64 @@ class DeveloperAgent:
         last_facts: VerifierResult | None = None
         last_signature: tuple[str, str] | None = None
         repeat_count = 0
+        tracer = trace.get_tracer("platform")
 
-        for _ in range(self._max_iterations):
-            response = await self._client.messages.create(
-                model=self._model,
-                max_tokens=_MAX_RESPONSE_TOKENS,
-                system=system,
-                messages=messages,
-                tools=_TOOLS,
-            )
-            tool_uses = [b for b in response.content if isinstance(b, ToolUseBlock)]
-            await self._record_turn(session_id, version, response, tool_uses)
-
-            tokens_spent += response.usage.input_tokens + response.usage.output_tokens
-            if tokens_spent > self._token_budget:
-                return await self._finish("budget_exceeded", sandbox, last_facts)
-
-            messages.append({"role": "assistant", "content": _to_param_blocks(response)})
-
-            if not tool_uses:
-                # The model stopped calling tools without a green verifier run — its own
-                # word is not a fact (ADR-0006). Nudge; the iteration cap bounds this.
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": (
-                            "You stopped without a green verifier run. Continue working "
-                            "the plan; use run_verifier to confirm before finishing."
-                        ),
-                    }
+        for iteration in range(self._max_iterations):
+            with tracer.start_as_current_span("developer.iteration") as iter_span:
+                iter_span.set_attribute("iteration", iteration)
+                response = await self._client.messages.create(
+                    model=self._model,
+                    max_tokens=_MAX_RESPONSE_TOKENS,
+                    system=system,
+                    messages=messages,
+                    tools=_TOOLS,
                 )
-                continue
+                tool_uses = [b for b in response.content if isinstance(b, ToolUseBlock)]
+                await self._record_turn(session_id, version, response, tool_uses)
 
-            results: list[ToolResultBlockParam] = []
-            for block in tool_uses:
-                signature = (block.name, json.dumps(block.input, sort_keys=True, default=str))
-                repeat_count = repeat_count + 1 if signature == last_signature else 1
-                last_signature = signature
-                if repeat_count >= _STUCK_REPEATS:
-                    return await self._finish("stuck", sandbox, last_facts)
+                tokens_spent += response.usage.input_tokens + response.usage.output_tokens
+                if tokens_spent > self._token_budget:
+                    return await self._finish("budget_exceeded", sandbox, last_facts)
 
-                output, facts, is_error = await self._dispatch(block, sandbox)
-                if facts is not None:
-                    last_facts = facts
-                results.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": output,
-                        "is_error": is_error,
-                    }
-                )
-                if facts is not None and _is_green(facts):
-                    return await self._finish("passed", sandbox, last_facts)
-            messages.append({"role": "user", "content": results})
+                messages.append({"role": "assistant", "content": _to_param_blocks(response)})
+
+                if not tool_uses:
+                    # The model stopped calling tools without a green verifier run — its own
+                    # word is not a fact (ADR-0006). Nudge; the iteration cap bounds this.
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "You stopped without a green verifier run. Continue working "
+                                "the plan; use run_verifier to confirm before finishing."
+                            ),
+                        }
+                    )
+                    continue
+
+                results: list[ToolResultBlockParam] = []
+                for block in tool_uses:
+                    signature = (block.name, json.dumps(block.input, sort_keys=True, default=str))
+                    repeat_count = repeat_count + 1 if signature == last_signature else 1
+                    last_signature = signature
+                    if repeat_count >= _STUCK_REPEATS:
+                        return await self._finish("stuck", sandbox, last_facts)
+
+                    with tracer.start_as_current_span(f"developer.tool.{block.name}"):
+                        output, facts, is_error = await self._dispatch(block, sandbox)
+                    if facts is not None:
+                        last_facts = facts
+                    results.append(
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": output,
+                            "is_error": is_error,
+                        }
+                    )
+                    if facts is not None and _is_green(facts):
+                        return await self._finish("passed", sandbox, last_facts)
+                messages.append({"role": "user", "content": results})
 
         return await self._finish("max_iterations", sandbox, last_facts)
 
@@ -283,14 +289,25 @@ class DeveloperAgent:
     ) -> None:
         input_tokens = response.usage.input_tokens
         output_tokens = response.usage.output_tokens
+        cost = compute_cost(self._model, input_tokens, output_tokens)
+        full_version = f"{_PROMPT_AGENT}/{_PROMPT_NAME}@{prompt_version}"
+        # Annotate the active ``developer.iteration`` span with this turn's LLM facts.
+        add_llm_attributes(
+            current_span(),
+            model=self._model,
+            prompt_version=full_version,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=float(cost) if cost is not None else 0.0,
+        )
         await self._recorder(
             session_id=session_id,
             agent="developer",
             model=self._model,
-            prompt_version=f"{_PROMPT_AGENT}/{_PROMPT_NAME}@{prompt_version}",
+            prompt_version=full_version,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            cost_usd=compute_cost(self._model, input_tokens, output_tokens),
+            cost_usd=cost,
             tool_calls={"calls": [{"tool": b.name, "input": b.input} for b in tool_uses]},
         )
 

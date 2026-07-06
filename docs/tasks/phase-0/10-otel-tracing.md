@@ -75,4 +75,39 @@ open http://localhost:16686
 
 ## Notes
 
-_(fill in as you go)_
+- **`configure` returns the provider and is offline-safe.** With no
+  `OTEL_EXPORTER_OTLP_ENDPOINT` it installs a provider with *no* exporter — spans are
+  created and dropped, nothing reaches for a collector, nothing is logged. So every
+  `@traced`/instrumented path is safe in `make test`/CI with zero config. `configure` also
+  takes `exporter`/`set_global`/`instrument` so tests build a provider, emit, and assert
+  without fighting OTel's set-once `set_tracer_provider`.
+- **Startup via FastAPI lifespan, not import.** `lifespan_for(name)` runs `configure` +
+  app instrumentation on server startup. A bare `TestClient(app)` (how the service unit
+  tests construct their client) never triggers lifespan, so instrumentation stays out of
+  unit tests. The orchestrator (not a server) configures in `orchestrator.main.run` — the
+  process entry — *not* in `Orchestrator.execute`, so a unit test driving the graph
+  directly doesn't mutate global tracing state. (Found the hard way: configuring in
+  `execute` set the global provider before the telemetry tests could install their
+  in-memory one, and their assertions went blank.)
+- **`task_id` via contextvar.** `execute` calls `set_task_context(task_id)` once; every
+  nested span (`@traced` phases, planner, developer iterations, and the cross-service
+  spans reached in-process) picks it up. `@traced` also honors an explicit `task_id`
+  kwarg, and binds the signature so positional args (`retrieve(query, repo, mode)`) get
+  captured under `capture_args` just like keyword ones.
+- **asyncp​g → psycopg deviation.** The card lists asyncpg auto-instrumentation, but the
+  DB layer uses psycopg (`platform_db.session`). SQLAlchemy instrumentation covers DB
+  spans at the engine level instead; asyncpg instrumentation is omitted.
+- **Span points instrumented:** orchestrator `run` + phase spans; planner `plan` (+ LLM
+  attrs); developer `iteration` + per-`tool.<name>` (+ LLM attrs); verifier `verify` +
+  per-runner (`build`/`typecheck`/`test`/`lint`); context-provider `retrieve` + per-MCP
+  call (`mcp.crg.call`/`mcp.graphify.call`); sandbox `spawn`/`exec`/`destroy`.
+- **Cross-service trace continuity** rides on httpx auto-instrumentation propagating trace
+  context on the outbound calls (orchestrator→verifier, developer→sandbox/verifier/
+  context-provider), so a task's spans stitch into one trace across processes. `task_id`
+  as a span *attribute* only appears where the contextvar is set (the orchestrator
+  process); downstream services get the trace linkage but not the attribute in Phase 0.
+- **`docker-compose.yml`:** confirmed Jaeger (16686 UI / 4317 OTLP) and set
+  `COLLECTOR_OTLP_ENABLED=true` explicitly so a pinned image still receives spans.
+- **Not run end-to-end.** The in-memory-exporter tests prove span creation, nesting,
+  task_id propagation, LLM attrs, and exception recording; a real Jaeger trace from a live
+  submit still needs the full stack + Docker (same gate as cards 08/11).

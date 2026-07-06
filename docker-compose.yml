@@ -17,6 +17,10 @@ services:
 
   jaeger:
     image: jaegertracing/all-in-one:latest
+    environment:
+      # Accept OTLP on 4317 (default in recent images; set explicitly so any pinned
+      # version still receives the platform's spans). 16686 is the trace-search UI.
+      COLLECTOR_OTLP_ENABLED: "true"
     ports:
       - "16686:16686"
       - "4317:4317"

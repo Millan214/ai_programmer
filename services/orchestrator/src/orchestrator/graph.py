@@ -19,6 +19,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
+from platform_telemetry import set_task_context, traced
 
 from orchestrator.persistence import PersistenceProtocol
 from orchestrator.protocols import (
@@ -56,6 +57,7 @@ class Orchestrator:
         self._persistence = persistence
         self._sandbox_cleanup = sandbox_cleanup
 
+    @traced("orchestrator.plan")
     async def _plan_node(self, state: TaskState) -> dict[str, object]:
         session_id = uuid.UUID(state["session_id"])
         # The planner (real or fake) writes its own ``agent_turn`` row via the
@@ -64,6 +66,7 @@ class Orchestrator:
         await self._persistence.advance_phase(session_id, "plan")
         return {"plan": plan, "phase": "plan"}
 
+    @traced("orchestrator.build")
     async def _build_node(self, state: TaskState) -> dict[str, object]:
         session_id = uuid.UUID(state["session_id"])
         # Like the planner, the developer (real or fake) writes its own ``agent_turn``
@@ -72,6 +75,7 @@ class Orchestrator:
         await self._persistence.advance_phase(session_id, "build")
         return {"edits": edits, "phase": "build"}
 
+    @traced("orchestrator.verify")
     async def _verify_node(self, state: TaskState) -> dict[str, object]:
         session_id = uuid.UUID(state["session_id"])
         # The real Verifier persists this run as a ``verifier_run`` row keyed on the
@@ -80,6 +84,7 @@ class Orchestrator:
         await self._persistence.record_node(session_id, "verify", "verifier")
         return {"verifier_facts": facts, "phase": "verify"}
 
+    @traced("orchestrator.ship")
     async def _ship_node(self, state: TaskState) -> dict[str, object]:
         pr_url = f"{_FAKE_PR_HOST}/{state['task_id']}"
         # The task row has no PR column in Phase 0 (card-01 schema), so the fake URL is
@@ -106,7 +111,13 @@ class Orchestrator:
         graph.add_edge("ship", END)
         return graph.compile(checkpointer=MemorySaver())
 
+    @traced("orchestrator.run")
     async def execute(self, task_id: uuid.UUID) -> None:
+        # Pin the task on the contextvar so every span below — phases, agents, verifier —
+        # carries it without threading task_id through call signatures. Provider setup is
+        # done once at the process entry (``orchestrator.main.run``), not here, so calling
+        # ``execute`` in a unit test doesn't mutate global tracing state.
+        set_task_context(task_id)
         task = await self._persistence.load_task(task_id)
         session_id = await self._persistence.open_session(task_id)
         compiled = self.build_graph()

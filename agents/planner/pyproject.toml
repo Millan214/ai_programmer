@@ -10,6 +10,7 @@ dependencies = [
     "platform-prompts",
     "platform-orchestrator",
     "platform-shared",
+    "platform-telemetry",
 ]
 
 [build-system]
@@ -24,3 +25,4 @@ platform-db = { workspace = true }
 platform-prompts = { workspace = true }
 platform-orchestrator = { workspace = true }
 platform-shared = { workspace = true }
+platform-telemetry = { workspace = true }

@@ -10,6 +10,8 @@ classes so tests can pass fakes without spinning up HTTP servers, matching
 
 from typing import Literal, Protocol
 
+from platform_telemetry import traced
+
 from context_provider.models import GraphQueryResult, Node, RetrievalResult
 
 
@@ -21,6 +23,7 @@ class GraphExplorer(Protocol):
     async def query_graph(self, query: str) -> GraphQueryResult: ...
 
 
+@traced("context_provider.retrieve", capture_args=True)
 async def retrieve(
     query: str,
     repo: str,

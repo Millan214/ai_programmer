@@ -18,6 +18,7 @@ from typing import cast
 from anthropic import AsyncAnthropic
 from anthropic.types import Message, TextBlock
 from orchestrator.protocols import TurnRecorder
+from platform_telemetry import add_llm_attributes, current_span, traced
 from prompts.registry import PromptRef, active_version, render
 from pydantic import ValidationError
 
@@ -45,6 +46,7 @@ class PlannerAgent:
         self._client = client if client is not None else AsyncAnthropic()
         self._model = model or os.environ.get(_DEFAULT_MODEL_ENV) or _DEFAULT_MODEL
 
+    @traced("planner.plan")
     async def plan(self, task_description: str, session_id: uuid.UUID) -> Plan:
         version = active_version(_PROMPT_AGENT, _PROMPT_NAME)
         prompt = render(
@@ -76,14 +78,26 @@ class PlannerAgent:
     ) -> None:
         input_tokens = response.usage.input_tokens
         output_tokens = response.usage.output_tokens
+        cost = compute_cost(self._model, input_tokens, output_tokens)
+        full_version = f"{_PROMPT_AGENT}/{_PROMPT_NAME}@{prompt_version}"
+        # Annotate the active ``planner.plan`` span with the same facts we persist, so a
+        # trace shows model/tokens/cost without joining back to Postgres.
+        add_llm_attributes(
+            current_span(),
+            model=self._model,
+            prompt_version=full_version,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=float(cost) if cost is not None else 0.0,
+        )
         await self._recorder(
             session_id=session_id,
             agent="planner",
             model=self._model,
-            prompt_version=f"{_PROMPT_AGENT}/{_PROMPT_NAME}@{prompt_version}",
+            prompt_version=full_version,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            cost_usd=compute_cost(self._model, input_tokens, output_tokens),
+            cost_usd=cost,
             tool_calls=None,
         )
 

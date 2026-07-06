@@ -3,7 +3,14 @@ name = "platform-telemetry"
 version = "0.0.1"
 description = "OTel setup shared by all services and agents."
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "opentelemetry-api>=1.27",
+    "opentelemetry-sdk>=1.27",
+    "opentelemetry-exporter-otlp>=1.27",
+    "opentelemetry-instrumentation-fastapi>=0.48b0",
+    "opentelemetry-instrumentation-httpx>=0.48b0",
+    "opentelemetry-instrumentation-sqlalchemy>=0.48b0",
+]
 
 [build-system]
 requires = ["hatchling"]

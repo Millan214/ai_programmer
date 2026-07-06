@@ -17,12 +17,13 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from platform_db.repositories import verifier_runs
 from platform_db.session import session_factory
+from platform_telemetry import lifespan_for, traced
 from pydantic import BaseModel
 
 from verifier.models import VerifierResult
 from verifier.runners import pnpm
 
-app = FastAPI(title="Verifier")
+app = FastAPI(title="Verifier", lifespan=lifespan_for("verifier"))
 
 
 class VerifyRequest(BaseModel):
@@ -30,6 +31,7 @@ class VerifyRequest(BaseModel):
     session_id: uuid.UUID | None = None
 
 
+@traced("verifier.verify")
 async def verify(cwd: Path) -> VerifierResult:
     build_result, typecheck_result, test_result, lint_result = await asyncio.gather(
         pnpm.build(cwd),

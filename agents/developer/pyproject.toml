@@ -11,6 +11,7 @@ dependencies = [
     "platform-prompts",
     "platform-sandbox",
     "platform-shared",
+    "platform-telemetry",
     "platform-verifier",
 ]
 
@@ -26,4 +27,5 @@ platform-orchestrator = { workspace = true }
 platform-prompts = { workspace = true }
 platform-sandbox = { workspace = true }
 platform-shared = { workspace = true }
+platform-telemetry = { workspace = true }
 platform-verifier = { workspace = true }

@@ -1,10 +1,11 @@
 """Task API FastAPI app. Run with ``uvicorn task_api.main:app --port 8000``."""
 
 from fastapi import FastAPI
+from platform_telemetry import lifespan_for
 
 from task_api.routes import router
 
-app = FastAPI(title="Task API")
+app = FastAPI(title="Task API", lifespan=lifespan_for("task-api"))
 app.include_router(router)
 
 

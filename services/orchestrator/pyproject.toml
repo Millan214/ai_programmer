@@ -8,6 +8,7 @@ dependencies = [
     "langchain-core>=0.3",
     "httpx>=0.27",
     "platform-db",
+    "platform-telemetry",
 ]
 
 [build-system]
@@ -19,3 +20,4 @@ packages = ["src/orchestrator"]
 
 [tool.uv.sources]
 platform-db = { workspace = true }
+platform-telemetry = { workspace = true }

@@ -8,10 +8,12 @@ dependencies = [
     "uvicorn>=0.32",
     "pydantic>=2.0",
     "platform-db",
+    "platform-telemetry",
 ]
 
 [tool.uv.sources]
 platform-db = { workspace = true }
+platform-telemetry = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

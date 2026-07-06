@@ -26,6 +26,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
+from platform_telemetry import traced
 from pydantic import BaseModel, Field
 
 from verifier.models import (
@@ -86,6 +87,7 @@ def _extract_json_object(output: str) -> dict[str, object] | None:
     return cast("dict[str, object]", parsed) if isinstance(parsed, dict) else None
 
 
+@traced("verifier.build")
 async def build(cwd: Path) -> BuildResult:
     code, stdout, stderr = await _run(["pnpm", "build"], cwd)
     if code == 0:
@@ -112,6 +114,7 @@ def parse_tsc_errors(output: str) -> list[TypecheckError]:
     return errors
 
 
+@traced("verifier.typecheck")
 async def typecheck(cwd: Path) -> TypecheckResult:
     code, stdout, stderr = await _run(["pnpm", "exec", "tsc", "--noEmit"], cwd)
     errors = parse_tsc_errors(stdout + stderr)
@@ -164,6 +167,7 @@ def parse_vitest_json(output: str, *, ran_clean: bool) -> TestResult:
     )
 
 
+@traced("verifier.test")
 async def test(cwd: Path) -> TestResult:
     code, stdout, _stderr = await _run(["pnpm", "exec", "vitest", "run", "--reporter=json"], cwd)
     return parse_vitest_json(stdout, ran_clean=code == 0)
@@ -214,6 +218,7 @@ def parse_biome_json(output: str, *, ran_clean: bool) -> LintResult:
     )
 
 
+@traced("verifier.lint")
 async def lint(cwd: Path) -> LintResult:
     code, stdout, _stderr = await _run(["pnpm", "exec", "biome", "check", "--reporter=json"], cwd)
     return parse_biome_json(stdout, ran_clean=code == 0)
