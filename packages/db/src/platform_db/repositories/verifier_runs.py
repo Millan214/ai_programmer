@@ -1,5 +1,6 @@
 import uuid
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_db.models import VerifierRun
@@ -34,3 +35,15 @@ async def create(
 
 async def get(session: AsyncSession, run_id: uuid.UUID) -> VerifierRun | None:
     return await session.get(VerifierRun, run_id)
+
+
+async def latest_for_session(
+    session: AsyncSession, session_id: uuid.UUID
+) -> VerifierRun | None:
+    result = await session.execute(
+        select(VerifierRun)
+        .where(VerifierRun.session_id == session_id)
+        .order_by(VerifierRun.created_at.desc(), VerifierRun.id.desc())
+        .limit(1)
+    )
+    return result.scalars().first()

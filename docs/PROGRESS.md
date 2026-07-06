@@ -21,7 +21,7 @@ produces a passing PR against the demo repo, and the entire run is auditable in 
 | 06 | [Docker sandbox v0](tasks/phase-0/06-sandbox-docker.md) | Done | `9255da3` (+ setup step) | Phase 0 container runner; Firecracker deferred (ADR-0003). `spawn` now installs deps via `setup_commands` (card 08 follow-up). |
 | 07 | [Context Provider v0 (Graphify + CRG)](tasks/phase-0/07-context-provider.md) | Done | `a2abdb1` | Sole retrieval gateway (ADR-0002). |
 | 08 | [Developer agent v0 (ReAct loop)](tasks/phase-0/08-developer-agent.md) | Done | *working tree* | ReAct loop w/ tool use, per-iteration `agent_turn`, budget/stuck/iteration caps. Integration test env-gated — needs a demo repo in `target-repos/` (see card Notes). |
-| 09 | [Task submission CLI + API](tasks/phase-0/09-task-cli.md) | Not started | — | `task-api` HTTP + CLI wrapper. |
+| 09 | [Task submission CLI + API](tasks/phase-0/09-task-cli.md) | Done | *working tree* | `POST/GET /tasks` + `platform-cli` (submit/status/list). Background orchestrator launch; `TaskStore` seam for unit tests. |
 | 10 | [OTel tracing wiring](tasks/phase-0/10-otel-tracing.md) | Not started | — | Jaeger locally; spans across services. |
 | 11 | [End-to-end smoke test](tasks/phase-0/11-smoke-test.md) | Not started | — | The exit criterion above. |
 
@@ -33,7 +33,10 @@ produces a passing PR against the demo repo, and the entire run is auditable in 
 
 ### Progress so far
 
-- **8 of 11 ordered cards landed** (01–08).
+- **9 of 11 ordered cards landed** (01–09).
+- **Tasks can be submitted end-to-end**: `platform-cli submit` (or `POST /tasks`) writes a
+  task row and launches the orchestrator in the background; `status`/`list` poll it. The
+  DB access sits behind a `TaskStore` protocol so route tests run without Postgres.
 - **The platform can now write code**: card 08's DeveloperAgent runs a real ReAct loop
   (Claude Sonnet by default, `DEVELOPER_MODEL` to override) — retrieve via Context
   Provider, read/edit through the sandbox, verifier auto-run after every edit, exits
@@ -50,11 +53,12 @@ produces a passing PR against the demo repo, and the entire run is auditable in 
 
 ### Next up
 
-Card 09 (task submission CLI + API). The two prior blockers are cleared: R2 (verifier_run
-persistence) is fixed, and `target-repos/demo-lib` now exists — a tiny TS library
-(`multiply`, `capitalize`) on the same pinned toolchain as the verifier fixture, verified
-green (build/typecheck/3 tests/lint). Run `make demo-repo` once per machine to git-init it
-and install its toolchain, then set `DEMO_REPO_PATH` to run card 08's integration test.
+Cards 10 (OTel tracing) and 11 (end-to-end smoke test) — the last two ordered cards.
+Card 11 is the Phase 0 exit criterion and needs a live run: `make up`, the service stack
+(sandbox/verifier/context-provider), `make demo-repo` + `DEMO_REPO_PATH`, and an
+`ANTHROPIC_API_KEY`. Everything up to that is wired and unit-green; the one thing never
+run for real is the full submit → plan → build-in-sandbox → verify → ship loop, which
+needs a machine with Docker running.
 
 ## Code review — 2026-07-05 (cards 01–07)
 

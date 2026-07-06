@@ -1,5 +1,6 @@
 import uuid
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_db.models import TaskSession
@@ -20,6 +21,16 @@ async def create(
 
 async def get(session: AsyncSession, session_id: uuid.UUID) -> TaskSession | None:
     return await session.get(TaskSession, session_id)
+
+
+async def latest_for_task(session: AsyncSession, task_id: uuid.UUID) -> TaskSession | None:
+    result = await session.execute(
+        select(TaskSession)
+        .where(TaskSession.task_id == task_id)
+        .order_by(TaskSession.started_at.desc(), TaskSession.id.desc())
+        .limit(1)
+    )
+    return result.scalars().first()
 
 
 async def update_phase(session: AsyncSession, session_id: uuid.UUID, phase: str) -> None:

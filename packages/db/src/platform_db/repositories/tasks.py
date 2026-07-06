@@ -1,6 +1,7 @@
 import uuid
 from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from platform_db.models import Task
@@ -31,6 +32,13 @@ async def create(
 
 async def get(session: AsyncSession, task_id: uuid.UUID) -> Task | None:
     return await session.get(Task, task_id)
+
+
+async def list_recent(session: AsyncSession, *, limit: int = 20, offset: int = 0) -> list[Task]:
+    result = await session.execute(
+        select(Task).order_by(Task.created_at.desc(), Task.id.desc()).limit(limit).offset(offset)
+    )
+    return list(result.scalars().all())
 
 
 async def update_status(session: AsyncSession, task_id: uuid.UUID, status: str) -> None:

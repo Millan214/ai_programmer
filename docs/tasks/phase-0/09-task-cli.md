@@ -69,4 +69,24 @@ platform-cli list --limit 5
 
 ## Notes
 
-_(fill in as you go)_
+- **`TaskStore` seam over `platform_db`.** Routes depend on a `TaskStore` protocol, not
+  the DB repos directly, so unit tests inject an in-memory fake. The models use
+  Postgres-only column types (`UUID`, `JSONB`) that don't run on SQLite, so there's no
+  cheap in-process DB for unit tests — the protocol seam is how the route tests stay
+  unit-fast. `PostgresTaskStore` is the real impl; `test_routes_integration.py` covers it
+  against `make up`.
+- **Background run via `runner.launch`.** POST enqueues the orchestrator with
+  `asyncio.create_task`, holding a strong reference so the GC can't cancel an in-flight
+  run, with a done-callback that surfaces (not swallows) a crash. `launch` is a module
+  attribute the tests monkeypatch so no real orchestrator spins up. Phase 0 is in-process;
+  a durable queue that survives an API restart is Phase 1+.
+- **Three sequential reads, not a SQL join.** `GET /tasks/{id}` reads task → latest session
+  → latest verifier run in one session. Added `tasks.list_recent`, `sessions.latest_for_task`,
+  `verifier_runs.latest_for_session` to `platform_db` (query helpers only — no schema
+  change). FK indexes (review finding R14) would speed these; not done here.
+- **Ruff config:** added `flake8-bugbear.extend-immutable-calls` for `fastapi.Depends`/
+  `fastapi.Query` so B008 (mutable default) doesn't fire on the idiomatic DI pattern —
+  the first routes in the repo to use `Depends` in argument defaults.
+- **New task status `queued`.** The API writes `status="queued"` on create; the
+  orchestrator overwrites it (`completed`/`failed_verify`) as the run progresses. Status
+  strings are still free-form (R14's CHECK-constraint note applies).

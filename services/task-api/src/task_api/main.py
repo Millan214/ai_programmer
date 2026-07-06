@@ -1,2 +1,15 @@
+"""Task API FastAPI app. Run with ``uvicorn task_api.main:app --port 8000``."""
+
+from fastapi import FastAPI
+
+from task_api.routes import router
+
+app = FastAPI(title="Task API")
+app.include_router(router)
+
+
 def run() -> None:
-    """Entry point for the task API. Stub — see docs/tasks/phase-0/09-task-cli.md."""
+    """Console entry point — serve the API with uvicorn."""
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8000)
