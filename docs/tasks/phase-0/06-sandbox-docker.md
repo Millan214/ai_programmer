@@ -98,3 +98,12 @@ asyncio.run(main())
   run end-to-end. The image build and real spawn/exec/diff/destroy flow from the card's
   "Success criteria" section still need a manual pass wherever Docker Desktop (or an
   equivalent daemon) is actually running.
+- **`setup_commands` added (card 08 follow-up).** `spawn` gained an optional
+  `setup_commands` that run in the container after start — deterministic dependency
+  install (`pnpm install`), since a fresh `git worktree add` carries no `node_modules` and
+  the Verifier would otherwise fail on a clean sandbox. A failed command tears the sandbox
+  down and raises. A shared `platform-pnpm-store` docker volume is mounted so installs
+  reuse downloads across spawns. `test_controller_unit.py` covers the ordering and
+  teardown-on-failure paths without Docker; the real install is exercised by card 08's
+  integration test. The *what to install* lives in the developer adapter
+  (`SANDBOX_SETUP_COMMANDS`), keeping the controller toolchain-agnostic.

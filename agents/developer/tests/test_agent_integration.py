@@ -67,7 +67,11 @@ async def test_simple_task_completes_end_to_end() -> None:
         )
         recorder = _ListRecorder()
         agent = DeveloperAgent(recorder=recorder, tools=tools)
-        handle = await sandbox.spawn(repo_path)
+        # Install deps into the fresh worktree — a bare `git worktree add` has no
+        # node_modules, so the Verifier would otherwise fail on a clean sandbox.
+        handle = await sandbox.spawn(
+            repo_path, setup_commands=[["pnpm", "install", "--frozen-lockfile"]]
+        )
         try:
             result = await agent.build(plan, handle, uuid.uuid4())
         finally:

@@ -107,7 +107,10 @@ End-to-end from orchestrator: submitting a task now runs the real developer. Pos
   service trio + `ANTHROPIC_API_KEY` + `DEMO_REPO_PATH` running/live. The sandbox R8
   finding (git broken inside the container) does not block this loop: `read_file`/
   `edit_file` use `cat`/`sh`, and diff runs host-side.
-- **Sandbox worktree lacks `node_modules` (open):** a fresh `git worktree add` from
-  demo-lib has only tracked files, so the Verifier fails until deps are installed in the
-  worktree. Sandbox spawn needs a setup step (or a pre-baked image) — design question for
-  card 06 follow-up; noted in demo-lib's README.
+- **Sandbox worktree `node_modules` gap: closed.** `spawn` now takes `setup_commands`
+  that run in the container after it starts (the developer adapter passes
+  `pnpm install --frozen-lockfile` by default, overridable via `SANDBOX_SETUP_COMMANDS`).
+  A failed install tears the sandbox down and raises rather than leaving a half-built
+  container. A shared `platform-pnpm-store` docker volume keeps installs warm across
+  spawns. This matches card 06's own `exec(handle, ['pnpm','install'])` example, just made
+  deterministic instead of relying on the LLM to remember.

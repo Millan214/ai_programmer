@@ -13,6 +13,14 @@ from sandbox.models import ExecResult, SandboxHandle
 
 IMAGE = "platform-sandbox:phase0"
 SANDBOX_ROOT = Path("/tmp/sandbox")
+# A named docker volume for pnpm's content-addressable store, shared across sandboxes so
+# per-spawn dependency installs reuse downloads instead of hitting the network cold every
+# time. Mounted at the container's default pnpm store path.
+PNPM_STORE_VOLUME = "platform-pnpm-store"
+_PNPM_STORE_PATH = "/root/.local/share/pnpm/store"
+# Dependency install can be slow on a cold store; give setup its own generous ceiling
+# rather than borrowing ``exec``'s per-command default.
+_SETUP_TIMEOUT_S = 600
 
 
 class SandboxError(Exception):
@@ -42,7 +50,20 @@ async def _repo_root(worktree_path: Path) -> Path:
     return Path(stdout.strip()).parent
 
 
-async def spawn(repo_path: Path, task_id: UUID) -> SandboxHandle:
+async def spawn(
+    repo_path: Path,
+    task_id: UUID,
+    setup_commands: list[list[str]] | None = None,
+) -> SandboxHandle:
+    """Create a worktree + container for a task.
+
+    ``setup_commands`` run in the container after it starts — Phase 0 uses this to
+    install the target repo's dependencies (``pnpm install``), which a fresh
+    ``git worktree add`` doesn't carry (only tracked files come across, no
+    ``node_modules``). Without it the Verifier fails on a clean sandbox. Each command
+    must exit 0; the first failure tears the sandbox down and raises, so a bad install
+    never leaves a half-provisioned container behind.
+    """
     worktree_path = SANDBOX_ROOT / str(task_id)
     SANDBOX_ROOT.mkdir(parents=True, exist_ok=True)
 
@@ -62,6 +83,8 @@ async def spawn(repo_path: Path, task_id: UUID) -> SandboxHandle:
             container_name,
             "-v",
             f"{worktree_path}:/workspace",
+            "-v",
+            f"{PNPM_STORE_VOLUME}:{_PNPM_STORE_PATH}",
             "-w",
             "/workspace",
             IMAGE,
@@ -74,11 +97,31 @@ async def spawn(repo_path: Path, task_id: UUID) -> SandboxHandle:
         await _run(["git", "worktree", "remove", "--force", str(worktree_path)], cwd=repo_path)
         raise SandboxError(f"docker run failed: {stderr.strip()}")
 
-    return SandboxHandle(
+    handle = SandboxHandle(
         id=str(task_id),
         worktree_path=worktree_path,
         container_id=stdout.strip(),
     )
+
+    for command in setup_commands or []:
+        code, stdout, stderr = await _run_with_timeout(
+            ["docker", "exec", handle.container_id, *command], _SETUP_TIMEOUT_S
+        )
+        if code != 0:
+            await destroy(handle)
+            raise SandboxError(
+                f"sandbox setup command {command} failed (exit {code}): "
+                f"{(stdout + stderr).strip()[-2000:]}"
+            )
+
+    return handle
+
+
+async def _run_with_timeout(cmd: list[str], timeout_s: int) -> tuple[int, str, str]:
+    try:
+        return await asyncio.wait_for(_run(cmd), timeout=timeout_s)
+    except TimeoutError as exc:
+        raise SandboxError(f"command timed out after {timeout_s}s: {cmd}") from exc
 
 
 async def exec(handle: SandboxHandle, command: list[str], timeout_s: int = 300) -> ExecResult:

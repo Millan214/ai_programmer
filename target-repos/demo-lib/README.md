@@ -16,7 +16,8 @@ That runs `git init` + `pnpm install` + an initial commit inside this directory 
 nested `.git` is invisible to the platform repo). Point the platform at it with
 `DEMO_REPO_PATH=<abs path to this dir>`.
 
-Known Phase 0 gap: a fresh `git worktree add` from this repo contains only tracked
-files — no `node_modules` — so the Verifier fails in a new sandbox until dependencies
-are installed in the worktree. Until sandbox spawn grows a setup step (design question
-raised in card 08's notes), run `pnpm install` in the worktree before verifying.
+A fresh `git worktree add` from this repo carries only tracked files — no
+`node_modules` — so the sandbox installs dependencies at spawn time via its
+`setup_commands` (default `pnpm install --frozen-lockfile`, from the developer
+adapter's `SANDBOX_SETUP_COMMANDS`). That's why the committed `pnpm-lock.yaml` matters:
+the frozen install reproduces exactly what's pinned here.

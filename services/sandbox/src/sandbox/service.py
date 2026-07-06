@@ -22,6 +22,7 @@ _handles: dict[str, SandboxHandle] = {}
 class SpawnRequest(BaseModel):
     repo_path: str
     task_id: UUID | None = None
+    setup_commands: list[list[str]] | None = None
 
 
 class ExecRequest(BaseModel):
@@ -47,7 +48,7 @@ async def create_sandbox(request: SpawnRequest) -> SandboxHandle:
         raise HTTPException(status_code=400, detail=f"repo_path does not exist: {repo_path}")
     task_id = request.task_id or uuid4()
     try:
-        handle = await spawn(repo_path, task_id)
+        handle = await spawn(repo_path, task_id, setup_commands=request.setup_commands)
     except SandboxError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     _handles[handle.id] = handle

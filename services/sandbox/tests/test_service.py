@@ -39,7 +39,14 @@ def test_full_round_trip(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Non
     task_id = uuid4()
     handle = _stub_handle(task_id)
 
-    async def fake_spawn(repo_path: Path, task_id_arg: UUID) -> SandboxHandle:
+    forwarded_setup: list[list[list[str]] | None] = []
+
+    async def fake_spawn(
+        repo_path: Path,
+        task_id_arg: UUID,
+        setup_commands: list[list[str]] | None = None,
+    ) -> SandboxHandle:
+        forwarded_setup.append(setup_commands)
         return handle
 
     async def fake_exec(h: SandboxHandle, command: list[str], timeout_s: int = 300) -> ExecResult:
@@ -60,11 +67,17 @@ def test_full_round_trip(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Non
     monkeypatch.setattr("sandbox.service.destroy", fake_destroy)
 
     response = client.post(
-        "/sandboxes", json={"repo_path": str(tmp_path), "task_id": str(task_id)}
+        "/sandboxes",
+        json={
+            "repo_path": str(tmp_path),
+            "task_id": str(task_id),
+            "setup_commands": [["pnpm", "install"]],
+        },
     )
     assert response.status_code == 200
     created = SandboxHandle.model_validate(response.json())
     assert created.container_id == "abc123"
+    assert forwarded_setup == [[["pnpm", "install"]]]
 
     response = client.post(f"/sandboxes/{created.id}/exec", json={"command": ["echo", "ok"]})
     assert response.status_code == 200
@@ -85,7 +98,11 @@ def test_exec_unknown_sandbox_returns_404() -> None:
 
 
 def test_spawn_failure_returns_502(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    async def fake_spawn(repo_path: Path, task_id_arg: UUID) -> SandboxHandle:
+    async def fake_spawn(
+        repo_path: Path,
+        task_id_arg: UUID,
+        setup_commands: list[list[str]] | None = None,
+    ) -> SandboxHandle:
         raise SandboxError("git worktree add failed: boom")
 
     monkeypatch.setattr("sandbox.service.spawn", fake_spawn)

@@ -17,11 +17,14 @@ class SandboxClient:
         self._base_url = base_url.rstrip("/")
         self._http = http if http is not None else httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT_S)
 
-    async def spawn(self, repo_path: str) -> SandboxHandle:
+    async def spawn(
+        self, repo_path: str, setup_commands: list[list[str]] | None = None
+    ) -> SandboxHandle:
+        body: dict[str, object] = {"repo_path": repo_path}
+        if setup_commands is not None:
+            body["setup_commands"] = setup_commands
         try:
-            response = await self._http.post(
-                f"{self._base_url}/sandboxes", json={"repo_path": repo_path}
-            )
+            response = await self._http.post(f"{self._base_url}/sandboxes", json=body)
         except httpx.HTTPError as exc:
             raise DeveloperError(f"sandbox service unreachable: {exc}") from exc
         if response.status_code >= 400:

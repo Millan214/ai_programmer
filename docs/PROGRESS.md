@@ -18,7 +18,7 @@ produces a passing PR against the demo repo, and the entire run is auditable in 
 | 03 | [LangGraph orchestrator skeleton](tasks/phase-0/03-orchestrator-skeleton.md) | Done | `c5560b0` | Outer FSM (Plan→Build→Verify→Ship) with fakes; MemorySaver (real Postgres checkpointer split to card 12). |
 | 04 | [Planner agent v0](tasks/phase-0/04-planner-agent.md) | Done | `602ed7f` | Real Anthropic call, JSON parse w/ one retry, own `agent_turn` write via injected `TurnRecorder`. |
 | 05 | [Verifier service v0](tasks/phase-0/05-verifier-service.md) | Done | `5cea0a6` | Runs build/test/typecheck/lint. **Does not yet write `verifier_run`** — see review finding R2. |
-| 06 | [Docker sandbox v0](tasks/phase-0/06-sandbox-docker.md) | Done | `9255da3` | Phase 0 container runner; Firecracker deferred (ADR-0003). |
+| 06 | [Docker sandbox v0](tasks/phase-0/06-sandbox-docker.md) | Done | `9255da3` (+ setup step) | Phase 0 container runner; Firecracker deferred (ADR-0003). `spawn` now installs deps via `setup_commands` (card 08 follow-up). |
 | 07 | [Context Provider v0 (Graphify + CRG)](tasks/phase-0/07-context-provider.md) | Done | `a2abdb1` | Sole retrieval gateway (ADR-0002). |
 | 08 | [Developer agent v0 (ReAct loop)](tasks/phase-0/08-developer-agent.md) | Done | *working tree* | ReAct loop w/ tool use, per-iteration `agent_turn`, budget/stuck/iteration caps. Integration test env-gated — needs a demo repo in `target-repos/` (see card Notes). |
 | 09 | [Task submission CLI + API](tasks/phase-0/09-task-cli.md) | Not started | — | `task-api` HTTP + CLI wrapper. |
