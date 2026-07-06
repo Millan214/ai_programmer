@@ -103,6 +103,11 @@ End-to-end from orchestrator: submitting a task now runs the real developer. Pos
 - **Demo repo exists:** `target-repos/demo-lib` (a tiny TS library, same toolchain as the
   verifier fixture). `make demo-repo` git-inits it and installs its toolchain; set
   `DEMO_REPO_PATH` to point the integration test at it.
+- **Final diff persisted (card 11 follow-up):** `_finish` now writes a zero-token
+  `agent_turn` whose `output_ref` carries the produced diff and `tool_calls` the exit
+  status. Nothing else stored the work product (it lived only in the in-memory `edits`
+  dict and the soon-destroyed worktree); this makes it auditable and gives the e2e a
+  target for its "diff touched the right files" assertion.
 - **Integration test is env-gated:** `tests/test_agent_integration.py` still needs the
   service trio + `ANTHROPIC_API_KEY` + `DEMO_REPO_PATH` running/live. The sandbox R8
   finding (git broken inside the container) does not block this loop: `read_file`/

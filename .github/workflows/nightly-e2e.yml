@@ -1,0 +1,52 @@
+name: Nightly E2E
+
+on:
+  schedule:
+    # 07:00 UTC daily.
+    - cron: "0 7 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    # The full submit → plan → build-in-sandbox → verify loop; give it room.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: "9"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: make install
+
+      - name: Bring up infra (Postgres + Jaeger)
+        run: make up
+
+      - name: Prepare demo repo
+        run: make demo-repo
+
+      - name: Run E2E
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: make test-e2e
+
+      - name: Tear down infra
+        if: always()
+        run: make down

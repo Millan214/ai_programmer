@@ -16,8 +16,11 @@ test:
 test-integration:
 	uv run pytest -m integration
 
+# Full loop against real services. Needs `make up`, ANTHROPIC_API_KEY, and Docker.
+# The tests live under tests/e2e (outside the unit testpaths) and self-skip if the
+# prereqs are absent; each test bounds its own runtime by polling with a 5-minute cap.
 test-e2e:
-	uv run pytest -m e2e
+	uv run pytest tests/e2e -v
 
 up:
 	docker compose up -d

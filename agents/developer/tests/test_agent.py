@@ -54,6 +54,7 @@ class _FakeRecorder:
                 "output_tokens": output_tokens,
                 "cost_usd": cost_usd,
                 "tool_calls": tool_calls,
+                "output_ref": output_ref,
             }
         )
 
@@ -182,7 +183,8 @@ async def test_two_iteration_path_exits_passed_and_records_each_turn() -> None:
     # The edit auto-ran the verifier; the loop exited green without a third model call.
     assert [name for name, _ in tools.calls] == ["retrieve", "edit_file", "run_verifier"]
 
-    assert len(recorder.calls) == 2, "one agent_turn per ReAct iteration"
+    # Two iteration turns + one final summary turn (carries the diff, zero tokens).
+    assert len(recorder.calls) == 3
     turn = recorder.calls[0]
     assert turn["agent"] == "developer"
     assert turn["model"] == "claude-sonnet-4-6"
@@ -191,6 +193,11 @@ async def test_two_iteration_path_exits_passed_and_records_each_turn() -> None:
     assert turn["tool_calls"] == {
         "calls": [{"tool": "retrieve", "input": {"query": "math module", "mode": "symbol"}}]
     }
+    # The final turn persists the diff and exit status for the audit trail / e2e assertions.
+    final = recorder.calls[-1]
+    assert final["output_ref"] == "--- fake diff ---"
+    assert final["tool_calls"] == {"final_status": "passed"}
+    assert final["input_tokens"] == 0
 
 
 @pytest.mark.asyncio
@@ -207,7 +214,7 @@ async def test_red_verifier_keeps_looping_until_green() -> None:
     result = await _agent(recorder, client, tools).build(_PLAN, _HANDLE, uuid.uuid4())
 
     assert result.status == "passed"
-    assert len(recorder.calls) == 2
+    assert len(recorder.calls) == 3  # 2 iterations + final summary
     assert result.verifier_facts.tests.status == "pass"
 
 
@@ -227,7 +234,7 @@ async def test_same_tool_and_args_three_times_exits_stuck() -> None:
     result = await _agent(recorder, client, tools).build(_PLAN, _HANDLE, uuid.uuid4())
 
     assert result.status == "stuck"
-    assert len(recorder.calls) == 3
+    assert len(recorder.calls) == 4  # 3 iterations + final summary
     # The verifier never ran; the facts say so instead of pretending.
     assert result.verifier_facts.build.status == "skip"
 
@@ -245,8 +252,9 @@ async def test_token_budget_breach_exits_budget_exceeded() -> None:
     )
 
     assert result.status == "budget_exceeded"
-    # The breaching call is still recorded — the spend happened (principle 4).
-    assert len(recorder.calls) == 1
+    # The breaching call is still recorded — the spend happened (principle 4) — plus the
+    # final summary turn.
+    assert len(recorder.calls) == 2
     # No tool ran after the breach.
     assert tools.calls == []
 
@@ -267,7 +275,7 @@ async def test_iteration_cap_exits_max_iterations() -> None:
     )
 
     assert result.status == "max_iterations"
-    assert len(recorder.calls) == 2
+    assert len(recorder.calls) == 3  # 2 iterations + final summary
 
 
 @pytest.mark.asyncio
@@ -285,7 +293,7 @@ async def test_text_only_response_is_nudged_not_trusted() -> None:
     result = await _agent(recorder, client, tools).build(_PLAN, _HANDLE, uuid.uuid4())
 
     assert result.status == "passed"
-    assert len(recorder.calls) == 2
+    assert len(recorder.calls) == 3  # text-only turn + edit turn + final summary
     # The conversation history carries the nudge that followed the text-only turn.
     history = client.calls[1]["messages"]
     assert any("without a green verifier run" in str(m["content"]) for m in history)

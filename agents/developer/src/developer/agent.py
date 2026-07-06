@@ -18,6 +18,7 @@ turn — the budget cap is the backstop), no concurrency, no prompt caching.
 import json
 import os
 import uuid
+from decimal import Decimal
 from typing import cast
 
 from anthropic import AsyncAnthropic
@@ -53,6 +54,9 @@ _TOKEN_BUDGET_ENV = "MAX_DEVELOPER_TOKENS_PER_TASK"
 _DEFAULT_TOKEN_BUDGET = 200_000
 _MAX_RESPONSE_TOKENS = 8192
 _STUCK_REPEATS = 3
+# Cap the diff stored on the final turn's ``output_ref`` — Phase 0 demo diffs are tiny;
+# this just guards a pathological run from writing a huge blob into an audit column.
+_MAX_DIFF_REF_CHARS = 20_000
 _PROMPT_AGENT = "developer"
 _PROMPT_NAME = "build"
 
@@ -196,7 +200,9 @@ class DeveloperAgent:
 
                 tokens_spent += response.usage.input_tokens + response.usage.output_tokens
                 if tokens_spent > self._token_budget:
-                    return await self._finish("budget_exceeded", sandbox, last_facts)
+                    return await self._finish(
+                        "budget_exceeded", sandbox, last_facts, session_id, version
+                    )
 
                 messages.append({"role": "assistant", "content": _to_param_blocks(response)})
 
@@ -220,7 +226,7 @@ class DeveloperAgent:
                     repeat_count = repeat_count + 1 if signature == last_signature else 1
                     last_signature = signature
                     if repeat_count >= _STUCK_REPEATS:
-                        return await self._finish("stuck", sandbox, last_facts)
+                        return await self._finish("stuck", sandbox, last_facts, session_id, version)
 
                     with tracer.start_as_current_span(f"developer.tool.{block.name}"):
                         output, facts, is_error = await self._dispatch(block, sandbox)
@@ -235,10 +241,12 @@ class DeveloperAgent:
                         }
                     )
                     if facts is not None and _is_green(facts):
-                        return await self._finish("passed", sandbox, last_facts)
+                        return await self._finish(
+                            "passed", sandbox, last_facts, session_id, version
+                        )
                 messages.append({"role": "user", "content": results})
 
-        return await self._finish("max_iterations", sandbox, last_facts)
+        return await self._finish("max_iterations", sandbox, last_facts, session_id, version)
 
     async def _dispatch(
         self, block: ToolUseBlock, sandbox: SandboxHandle
@@ -271,9 +279,28 @@ class DeveloperAgent:
             return (str(exc), None, True)
 
     async def _finish(
-        self, status: BuildStatus, sandbox: SandboxHandle, last_facts: VerifierResult | None
+        self,
+        status: BuildStatus,
+        sandbox: SandboxHandle,
+        last_facts: VerifierResult | None,
+        session_id: uuid.UUID,
+        version: str,
     ) -> BuildResult:
         diff = await self._tools.get_diff(sandbox)
+        # Persist the outcome as a final ``agent_turn`` — zero-token, its ``output_ref``
+        # carries the diff so the work product is auditable (nothing else stores it) and
+        # the e2e can assert on the files touched. ``tool_calls`` records the exit status.
+        await self._recorder(
+            session_id=session_id,
+            agent="developer",
+            model=self._model,
+            prompt_version=f"{_PROMPT_AGENT}/{_PROMPT_NAME}@{version}",
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=Decimal(0),
+            tool_calls={"final_status": status},
+            output_ref=diff[:_MAX_DIFF_REF_CHARS],
+        )
         return BuildResult(
             status=status,
             diff=diff,

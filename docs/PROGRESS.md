@@ -23,7 +23,7 @@ produces a passing PR against the demo repo, and the entire run is auditable in 
 | 08 | [Developer agent v0 (ReAct loop)](tasks/phase-0/08-developer-agent.md) | Done | *working tree* | ReAct loop w/ tool use, per-iteration `agent_turn`, budget/stuck/iteration caps. Integration test env-gated — needs a demo repo in `target-repos/` (see card Notes). |
 | 09 | [Task submission CLI + API](tasks/phase-0/09-task-cli.md) | Done | *working tree* | `POST/GET /tasks` + `platform-cli` (submit/status/list). Background orchestrator launch; `TaskStore` seam for unit tests. |
 | 10 | [OTel tracing wiring](tasks/phase-0/10-otel-tracing.md) | Done | *working tree* | `configure`/`lifespan_for`/`traced` + task-id contextvar. Spans across orchestrator/planner/developer/verifier/context-provider/sandbox; offline-safe. |
-| 11 | [End-to-end smoke test](tasks/phase-0/11-smoke-test.md) | Not started | — | The exit criterion above. |
+| 11 | [End-to-end smoke test](tasks/phase-0/11-smoke-test.md) | Harness done, not run green | *working tree* | Full e2e harness + stub MCP + nightly CI. Validated through migrations/image/service-boot; the real LLM loop needs Linux + an API key. |
 
 ### Follow-up cards (spawned mid-Phase-0)
 
@@ -33,7 +33,8 @@ produces a passing PR against the demo repo, and the entire run is auditable in 
 
 ### Progress so far
 
-- **10 of 11 ordered cards landed** (01–10).
+- **10 of 11 ordered cards landed** (01–10); **card 11's harness is complete** but the
+  full loop hasn't been run green (needs Linux + an API key — see card 11 notes).
 - **Every task run is traceable** as of card 10: a root `orchestrator.run` span with
   children per phase, per planner/developer LLM call (model/tokens/cost attributes), and
   per verifier/sandbox/retrieval hop. Tracing is offline-safe — no collector needed for
@@ -57,12 +58,12 @@ produces a passing PR against the demo repo, and the entire run is auditable in 
 
 ### Next up
 
-Card 11 (end-to-end smoke test) — the last ordered card and the Phase 0 exit criterion.
-It needs a live run: `make up`, the service stack (sandbox/verifier/context-provider),
-`make demo-repo` + `DEMO_REPO_PATH`, and an `ANTHROPIC_API_KEY`. Everything up to it is
-wired and unit-green; the one thing never run for real is the full submit → plan →
-build-in-sandbox → verify → ship loop (and its Jaeger trace), which needs a machine with
-Docker running.
+**Run card 11 green on Linux to close Phase 0.** The harness is in `tests/e2e/`; the
+nightly workflow (`.github/workflows/nightly-e2e.yml`) runs it on ubuntu-latest with the
+`ANTHROPIC_API_KEY` secret. Locally that means a Linux host (or WSL2 with the services
+running *inside* WSL): `make up`, `make demo-repo`, `export ANTHROPIC_API_KEY=…`,
+`make test-e2e`. When both e2e tests pass, tag `v0.1.0-phase0` and start Phase 1 — first
+re-reading every Phase 0 `## Notes` section (the deviation log is the Phase 1 scope input).
 
 ## Code review — 2026-07-05 (cards 01–07)
 
