@@ -13,6 +13,7 @@ real request/response wiring without needing the fixtures' node_modules installe
 # pyright: reportUnknownArgumentType=false
 
 import shutil
+import uuid
 from pathlib import Path
 
 import pytest
@@ -51,6 +52,47 @@ def test_verify_endpoint_returns_valid_result(monkeypatch: pytest.MonkeyPatch) -
 def test_verify_endpoint_rejects_nonexistent_path() -> None:
     response = client.post("/verify", json={"worktree_path": "/does/not/exist"})
     assert response.status_code == 400
+
+
+def test_verify_persists_run_when_session_id_given(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_verify(cwd: Path) -> VerifierResult:
+        return _STUB_RESULT
+
+    persisted: list[tuple[uuid.UUID, Path, VerifierResult]] = []
+
+    async def fake_persist(session_id: uuid.UUID, worktree: Path, result: VerifierResult) -> None:
+        persisted.append((session_id, worktree, result))
+
+    monkeypatch.setattr("verifier.service.verify", fake_verify)
+    monkeypatch.setattr("verifier.service.persist_run", fake_persist)
+    session_id = uuid.uuid4()
+
+    response = client.post(
+        "/verify",
+        json={"worktree_path": str(PASSING_PROJECT), "session_id": str(session_id)},
+    )
+
+    assert response.status_code == 200
+    assert len(persisted) == 1
+    assert persisted[0][0] == session_id
+    assert persisted[0][2].build.status == "pass"
+
+
+def test_verify_skips_persistence_without_session_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_verify(cwd: Path) -> VerifierResult:
+        return _STUB_RESULT
+
+    async def exploding_persist(
+        session_id: uuid.UUID, worktree: Path, result: VerifierResult
+    ) -> None:
+        raise AssertionError("persist_run must not be called without a session_id")
+
+    monkeypatch.setattr("verifier.service.verify", fake_verify)
+    monkeypatch.setattr("verifier.service.persist_run", exploding_persist)
+
+    response = client.post("/verify", json={"worktree_path": str(PASSING_PROJECT)})
+
+    assert response.status_code == 200
 
 
 @pytest.mark.integration

@@ -13,6 +13,8 @@ is an infrastructure problem, not a verification result, and reporting it as one
 be exactly the kind of factual claim ADR-0006 exists to prevent. It propagates.
 """
 
+import uuid
+
 import httpx
 
 from orchestrator.protocols import EditsDict, VerifierFacts
@@ -26,7 +28,7 @@ class VerifierHttpClient:
     def __init__(self, base_url: str) -> None:
         self._base_url = base_url.rstrip("/")
 
-    async def verify(self, edits: EditsDict) -> VerifierFacts:
+    async def verify(self, edits: EditsDict, session_id: uuid.UUID) -> VerifierFacts:
         worktree_path = edits.get("worktree_path")
         if not isinstance(worktree_path, str):
             raise VerifierClientError(
@@ -35,7 +37,8 @@ class VerifierHttpClient:
             )
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
-                f"{self._base_url}/verify", json={"worktree_path": worktree_path}
+                f"{self._base_url}/verify",
+                json={"worktree_path": worktree_path, "session_id": str(session_id)},
             )
             response.raise_for_status()
         result = response.json()

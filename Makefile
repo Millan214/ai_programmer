@@ -1,4 +1,4 @@
-.PHONY: install check test test-integration test-e2e up down
+.PHONY: install check test test-integration test-e2e up down demo-repo
 
 install:
 	uv sync --all-packages
@@ -24,3 +24,9 @@ up:
 
 down:
 	docker compose down
+
+# One-time: turn target-repos/demo-lib into its own git repo (sandbox worktrees spawn
+# from it) and install its toolchain. Safe to re-run.
+demo-repo:
+	cd target-repos/demo-lib && ([ -d .git ] || git init -q) && pnpm install
+	cd target-repos/demo-lib && git add -A && (git diff --cached --quiet || git commit -q -m "demo-lib snapshot")

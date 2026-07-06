@@ -78,28 +78,29 @@ class FakePersistence:
 async def test_full_run_transitions_all_phases_and_completes() -> None:
     persistence = FakePersistence()
     planner = FakePlanner(recorder=persistence.record_agent_turn)
-    orch = Orchestrator(planner, FakeDeveloper(), FakeVerifier(), persistence)
+    developer = FakeDeveloper(recorder=persistence.record_agent_turn)
+    orch = Orchestrator(planner, developer, FakeVerifier(), persistence)
     task_id = uuid.uuid4()
 
     await orch.execute(task_id)
 
     assert persistence.opened == [task_id]
-    # Every phase advances the session_session — plan via ``advance_phase``, the fakes
-    # via ``record_node`` (which advances-and-writes-placeholder).
+    # Every phase advances the task_session — plan/build via ``advance_phase`` (their
+    # agents write their own turns), verify/ship via ``record_node``
+    # (which advances-and-writes-placeholder).
     assert [phase for _, phase in persistence.phase_advances] == [
         "plan",
         "build",
         "verify",
         "ship",
     ]
-    # ``record_node`` fires only for the fake build/verify/ship path — plan goes through
-    # the Planner's own turn write, not through ``record_node``.
-    assert [phase for phase, _, _ in persistence.nodes] == ["build", "verify", "ship"]
-    assert [agent for _, agent, _ in persistence.nodes] == ["developer", "verifier", "shipper"]
-    # FakePlanner used its recorder to stamp a placeholder ``agent_turn`` row.
-    assert len(persistence.agent_turns) == 1
-    assert persistence.agent_turns[0]["agent"] == "planner"
-    assert persistence.agent_turns[0]["model"] == "fake"
+    # ``record_node`` fires only for the fake verify/ship path — plan and build go
+    # through their agents' own turn writes, not through ``record_node``.
+    assert [phase for phase, _, _ in persistence.nodes] == ["verify", "ship"]
+    assert [agent for _, agent, _ in persistence.nodes] == ["verifier", "shipper"]
+    # FakePlanner and FakeDeveloper used their recorders to stamp placeholder rows.
+    assert [turn["agent"] for turn in persistence.agent_turns] == ["planner", "developer"]
+    assert all(turn["model"] == "fake" for turn in persistence.agent_turns)
 
     assert persistence.statuses == ["completed"]
 
@@ -120,8 +121,33 @@ async def test_failed_verify_does_not_ship() -> None:
     await orch.execute(task_id)
 
     assert [phase for _, phase in persistence.phase_advances] == ["plan", "build", "verify"]
-    assert [phase for phase, _, _ in persistence.nodes] == ["build", "verify"]
+    assert [phase for phase, _, _ in persistence.nodes] == ["verify"]
     assert persistence.statuses == ["failed_verify"]
+
+
+@pytest.mark.asyncio
+async def test_sandbox_cleanup_runs_after_the_run() -> None:
+    """A developer that leaves a sandbox alive for Verify gets it torn down at end of run."""
+    persistence = FakePersistence()
+    cleaned: list[str] = []
+
+    class _SandboxDeveloper:
+        async def build(
+            self, plan: dict[str, object], repo: str, session_id: uuid.UUID
+        ) -> dict[str, object]:
+            return {"diff": "real diff", "worktree_path": "/tmp/sb-1", "sandbox_id": "sb-1"}
+
+    async def cleanup(sandbox_id: str) -> None:
+        cleaned.append(sandbox_id)
+
+    orch = Orchestrator(
+        FakePlanner(), _SandboxDeveloper(), FakeVerifier(), persistence, sandbox_cleanup=cleanup
+    )
+
+    await orch.execute(uuid.uuid4())
+
+    assert cleaned == ["sb-1"]
+    assert persistence.statuses == ["completed"]
 
 
 @pytest.mark.integration

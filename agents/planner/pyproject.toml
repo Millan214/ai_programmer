@@ -9,6 +9,7 @@ dependencies = [
     "platform-db",
     "platform-prompts",
     "platform-orchestrator",
+    "platform-shared",
 ]
 
 [build-system]
@@ -22,3 +23,4 @@ packages = ["src/planner"]
 platform-db = { workspace = true }
 platform-prompts = { workspace = true }
 platform-orchestrator = { workspace = true }
+platform-shared = { workspace = true }

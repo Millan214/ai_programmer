@@ -10,13 +10,15 @@ class TaskState(TypedDict):
 
     The six domain fields (``task_id``, ``phase``, ``plan``, ``edits``,
     ``verifier_facts``, ``budget_remaining``) are from card 03's spec.
-    ``session_id`` and ``task_description`` are added as plumbing: the former links
-    every ``agent_turn`` to its ``task_session`` (FK), the latter is the Planner's input.
+    ``session_id``, ``task_description``, and ``repo`` are added as plumbing: the first
+    links every ``agent_turn`` to its ``task_session`` (FK), the second is the Planner's
+    input, the third tells the Developer what to spawn a sandbox from (card 08).
     """
 
     task_id: str
     session_id: str
     task_description: str
+    repo: str
     phase: str
     plan: dict[str, object] | None
     edits: dict[str, object] | None

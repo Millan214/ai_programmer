@@ -974,6 +974,28 @@ requires-dist = [
 name = "platform-developer"
 version = "0.0.1"
 source = { editable = "agents/developer" }
+dependencies = [
+    { name = "anthropic" },
+    { name = "httpx" },
+    { name = "platform-orchestrator" },
+    { name = "platform-prompts" },
+    { name = "platform-sandbox" },
+    { name = "platform-shared" },
+    { name = "platform-verifier" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "anthropic", specifier = ">=0.40" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "platform-orchestrator", editable = "services/orchestrator" },
+    { name = "platform-prompts", editable = "prompts" },
+    { name = "platform-sandbox", editable = "services/sandbox" },
+    { name = "platform-shared", editable = "packages/shared" },
+    { name = "platform-verifier", editable = "services/verifier" },
+    { name = "pydantic", specifier = ">=2.0" },
+]
 
 [[package]]
 name = "platform-orchestrator"
@@ -1003,6 +1025,7 @@ dependencies = [
     { name = "platform-db" },
     { name = "platform-orchestrator" },
     { name = "platform-prompts" },
+    { name = "platform-shared" },
     { name = "pydantic" },
 ]
 
@@ -1012,6 +1035,7 @@ requires-dist = [
     { name = "platform-db", editable = "packages/db" },
     { name = "platform-orchestrator", editable = "services/orchestrator" },
     { name = "platform-prompts", editable = "prompts" },
+    { name = "platform-shared", editable = "packages/shared" },
     { name = "pydantic", specifier = ">=2.0" },
 ]
 
@@ -1064,6 +1088,7 @@ version = "0.0.1"
 source = { editable = "services/verifier" }
 dependencies = [
     { name = "fastapi" },
+    { name = "platform-db" },
     { name = "pydantic" },
     { name = "uvicorn" },
 ]
@@ -1071,6 +1096,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
+    { name = "platform-db", editable = "packages/db" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "uvicorn", specifier = ">=0.32" },
 ]

@@ -1,8 +1,18 @@
 # platform-developer
 
-Developer agent: ReAct loop that edits code in the sandbox.
+Developer agent: the ReAct loop that edits code in the sandbox (card 08).
 
-**Status:** placeholder. This module currently contains only a stub so the
-workspace imports cleanly and `make test` passes; there is no real logic yet.
+- `agent.py` — the loop: one tool call per model turn, verifier auto-run after every
+  edit, exits on green verifier / token budget / stuck detection / iteration cap.
+  Every iteration persists an `agent_turn` row. Model: `DEVELOPER_MODEL`
+  (default `claude-sonnet-4-6` — balanced tier for many-call tool-use loops).
+- `tools.py` — the tool surface, each wrapping one platform service over HTTP:
+  Context Provider (`retrieve`), sandbox exec (`read_file`/`edit_file`), Verifier
+  (`run_verifier`).
+- `adapter.py` — adapts to the orchestrator's dict protocol and owns the sandbox
+  lifecycle around one build.
+- `sandbox_client.py` — spawn/destroy against the sandbox controller.
 
-Filled in by [`08-developer-agent.md`](../../docs/tasks/phase-0/08-developer-agent.md).
+Env: `DEVELOPER_MODEL`, `DEVELOPER_MAX_ITERATIONS` (default 15),
+`MAX_DEVELOPER_TOKENS_PER_TASK` (default 200000), plus the service URLs
+(`SANDBOX_URL`, `VERIFIER_URL`, `CONTEXT_PROVIDER_URL`) wired in `orchestrator.main`.

@@ -21,7 +21,12 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from orchestrator.persistence import PersistenceProtocol
-from orchestrator.protocols import DeveloperProtocol, PlannerProtocol, VerifierProtocol
+from orchestrator.protocols import (
+    DeveloperProtocol,
+    PlannerProtocol,
+    SandboxCleanup,
+    VerifierProtocol,
+)
 from orchestrator.state import TaskState
 
 # Fake PR URL host — the real merge coordinator is Phase 1+. ``.invalid`` is reserved
@@ -43,11 +48,13 @@ class Orchestrator:
         developer: DeveloperProtocol,
         verifier: VerifierProtocol,
         persistence: PersistenceProtocol,
+        sandbox_cleanup: SandboxCleanup | None = None,
     ) -> None:
         self._planner = planner
         self._developer = developer
         self._verifier = verifier
         self._persistence = persistence
+        self._sandbox_cleanup = sandbox_cleanup
 
     async def _plan_node(self, state: TaskState) -> dict[str, object]:
         session_id = uuid.UUID(state["session_id"])
@@ -58,17 +65,19 @@ class Orchestrator:
         return {"plan": plan, "phase": "plan"}
 
     async def _build_node(self, state: TaskState) -> dict[str, object]:
-        edits = await self._developer.build(state["plan"] or {})
-        await self._persistence.record_node(
-            uuid.UUID(state["session_id"]), "build", "developer"
-        )
+        session_id = uuid.UUID(state["session_id"])
+        # Like the planner, the developer (real or fake) writes its own ``agent_turn``
+        # rows — one per ReAct iteration — via its ``TurnRecorder`` (card 08).
+        edits = await self._developer.build(state["plan"] or {}, state["repo"], session_id)
+        await self._persistence.advance_phase(session_id, "build")
         return {"edits": edits, "phase": "build"}
 
     async def _verify_node(self, state: TaskState) -> dict[str, object]:
-        facts = await self._verifier.verify(state["edits"] or {})
-        await self._persistence.record_node(
-            uuid.UUID(state["session_id"]), "verify", "verifier"
-        )
+        session_id = uuid.UUID(state["session_id"])
+        # The real Verifier persists this run as a ``verifier_run`` row keyed on the
+        # session (R2); the ``record_node`` turn below is just the phase transition.
+        facts = await self._verifier.verify(state["edits"] or {}, session_id)
+        await self._persistence.record_node(session_id, "verify", "verifier")
         return {"verifier_facts": facts, "phase": "verify"}
 
     async def _ship_node(self, state: TaskState) -> dict[str, object]:
@@ -105,6 +114,7 @@ class Orchestrator:
             "task_id": str(task_id),
             "session_id": str(session_id),
             "task_description": task["description"],
+            "repo": task["repo"],
             "phase": "plan",
             "plan": None,
             "edits": None,
@@ -117,3 +127,9 @@ class Orchestrator:
         # ship and the run terminates here in ``failed_verify`` (no back-edge in Phase 0).
         if final["phase"] != "ship":
             await self._persistence.set_task_status(task_id, "failed_verify")
+        # A real Developer leaves its sandbox alive so Verify could inspect the worktree
+        # (see ``developer.adapter``); the run is over now, tear it down.
+        if self._sandbox_cleanup is not None:
+            sandbox_id = (final["edits"] or {}).get("sandbox_id")
+            if isinstance(sandbox_id, str):
+                await self._sandbox_cleanup(sandbox_id)

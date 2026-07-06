@@ -2,7 +2,7 @@
 
 Cross-cutting utilities shared across services and agents.
 
-**Status:** placeholder. This module currently contains only a stub so the
-workspace imports cleanly and `make test` passes; there is no real logic yet.
+- `pricing.py` — per-model USD pricing for `agent_turn.cost_usd` (moved here from
+  `planner.pricing` in card 08; both agents compute costs from the same table).
 
 No dedicated task card — filled in incrementally as other Phase 0 tasks need shared utilities.

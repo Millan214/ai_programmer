@@ -3,7 +3,16 @@ name = "platform-developer"
 version = "0.0.1"
 description = "Developer agent: ReAct loop that edits code in the sandbox."
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "anthropic>=0.40",
+    "httpx>=0.27",
+    "pydantic>=2.0",
+    "platform-orchestrator",
+    "platform-prompts",
+    "platform-sandbox",
+    "platform-shared",
+    "platform-verifier",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -11,3 +20,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/developer"]
+
+[tool.uv.sources]
+platform-orchestrator = { workspace = true }
+platform-prompts = { workspace = true }
+platform-sandbox = { workspace = true }
+platform-shared = { workspace = true }
+platform-verifier = { workspace = true }
