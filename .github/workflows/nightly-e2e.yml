@@ -23,9 +23,9 @@ jobs:
         run: uv python install 3.12
 
       - name: Set up pnpm
+        # No version here: pnpm/action-setup reads it from package.json's
+        # "packageManager" field. Specifying both errors (ERR_PNPM_BAD_PM_VERSION).
         uses: pnpm/action-setup@v4
-        with:
-          version: "9"
 
       - name: Set up Node
         uses: actions/setup-node@v4
