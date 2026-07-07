@@ -25,17 +25,21 @@ class FakePersistence:
         self.phase_advances: list[tuple[uuid.UUID, str]] = []
         self.agent_turns: list[dict[str, object]] = []
         self.statuses: list[str] = []
-        self._session_id = uuid.uuid4()
+        self.closed: list[uuid.UUID] = []
+        self.session_id = uuid.uuid4()
 
     async def load_task(self, task_id: uuid.UUID) -> TaskInfo:
         return TaskInfo(description="stub", repo="demo-lib", budget_remaining=0.0)
 
     async def open_session(self, task_id: uuid.UUID) -> uuid.UUID:
         self.opened.append(task_id)
-        return self._session_id
+        return self.session_id
 
     async def advance_phase(self, session_id: uuid.UUID, phase: str) -> None:
         self.phase_advances.append((session_id, phase))
+
+    async def close_session(self, session_id: uuid.UUID) -> None:
+        self.closed.append(session_id)
 
     async def record_node(
         self, session_id: uuid.UUID, phase: str, agent: str, output_ref: str | None = None
@@ -103,6 +107,8 @@ async def test_full_run_transitions_all_phases_and_completes() -> None:
     assert all(turn["model"] == "fake" for turn in persistence.agent_turns)
 
     assert persistence.statuses == ["completed"]
+    # R5: the session is closed (ended_at stamped) on every terminal outcome.
+    assert persistence.closed == [persistence.session_id]
 
     # The ship turn carries the fake PR URL as its output_ref.
     _, _, ship_output_ref = persistence.nodes[-1]
@@ -114,7 +120,7 @@ async def test_full_run_transitions_all_phases_and_completes() -> None:
 async def test_failed_verify_does_not_ship() -> None:
     persistence = FakePersistence()
     planner = FakePlanner(recorder=persistence.record_agent_turn)
-    failing_verifier = FakeVerifier({"build": "fail", "tests": "pass"})
+    failing_verifier = FakeVerifier({"build": "fail", "typecheck": "pass", "tests": "pass"})
     orch = Orchestrator(planner, FakeDeveloper(), failing_verifier, persistence)
     task_id = uuid.uuid4()
 
@@ -123,6 +129,39 @@ async def test_failed_verify_does_not_ship() -> None:
     assert [phase for _, phase in persistence.phase_advances] == ["plan", "build", "verify"]
     assert [phase for phase, _, _ in persistence.nodes] == ["verify"]
     assert persistence.statuses == ["failed_verify"]
+    assert persistence.closed == [persistence.session_id]
+
+
+@pytest.mark.asyncio
+async def test_type_errors_block_ship() -> None:
+    """R3: a change that builds and tests-passes but fails typecheck must not ship."""
+    persistence = FakePersistence()
+    planner = FakePlanner(recorder=persistence.record_agent_turn)
+    verifier = FakeVerifier({"build": "pass", "typecheck": "fail", "tests": "pass", "lint": "pass"})
+    orch = Orchestrator(planner, FakeDeveloper(), verifier, persistence)
+
+    await orch.execute(uuid.uuid4())
+
+    assert "shipper" not in [agent for _, agent, _ in persistence.nodes]
+    assert persistence.statuses == ["failed_verify"]
+
+
+@pytest.mark.asyncio
+async def test_raising_agent_marks_task_failed_and_closes_session() -> None:
+    """R5: an agent that raises must not leave the task dangling; status→failed, ended_at set."""
+    persistence = FakePersistence()
+
+    class _BoomPlanner:
+        async def plan(self, task_description: str, session_id: uuid.UUID) -> dict[str, object]:
+            raise RuntimeError("planner exploded")
+
+    orch = Orchestrator(_BoomPlanner(), FakeDeveloper(), FakeVerifier(), persistence)
+
+    with pytest.raises(RuntimeError, match="planner exploded"):
+        await orch.execute(uuid.uuid4())
+
+    assert persistence.statuses == ["failed"]
+    assert persistence.closed == [persistence.session_id]
 
 
 @pytest.mark.asyncio

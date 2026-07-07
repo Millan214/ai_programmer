@@ -50,6 +50,8 @@ class PersistenceProtocol(Protocol):
 
     async def advance_phase(self, session_id: uuid.UUID, phase: str) -> None: ...
 
+    async def close_session(self, session_id: uuid.UUID) -> None: ...
+
     async def record_node(
         self, session_id: uuid.UUID, phase: str, agent: str, output_ref: str | None = None
     ) -> None: ...
@@ -99,6 +101,11 @@ class OrchestratorPersistence:
     async def advance_phase(self, session_id: uuid.UUID, phase: str) -> None:
         async with session_factory()() as db:
             await sessions.update_phase(db, session_id, phase)
+            await db.commit()
+
+    async def close_session(self, session_id: uuid.UUID) -> None:
+        async with session_factory()() as db:
+            await sessions.close(db, session_id)
             await db.commit()
 
     async def record_node(

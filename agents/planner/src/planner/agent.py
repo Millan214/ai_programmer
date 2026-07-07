@@ -54,17 +54,26 @@ class PlannerAgent:
             task_description=task_description,
         )
 
+        # Persist a turn for *every* model call, not just the successful one (R1 —
+        # principle 4: every LLM call is a persisted event). Recording happens before
+        # the parse so a call that produced un-parseable output is still on the ledger.
         response = await self._call_model(prompt)
-        try:
-            plan = _parse(_extract_text(response))
-        except PlannerOutputError:
-            # One retry — the prompt is explicit about JSON-only, so a re-roll usually
-            # recovers. Any second failure is surfaced to the caller.
-            response = await self._call_model(prompt)
-            plan = _parse(_extract_text(response))
-
         await self._record_turn(session_id, version, response)
-        return plan
+        try:
+            return _parse(_extract_text(response))
+        except PlannerOutputError:
+            # A ``max_tokens`` stop means the JSON was truncated — an identical re-roll
+            # would truncate again, so surface it instead of burning a second call (R6).
+            if response.stop_reason == "max_tokens":
+                raise PlannerOutputError(
+                    "planner output was truncated at max_tokens; increase the cap or "
+                    "narrow the task rather than retrying"
+                ) from None
+            # Otherwise one retry — the prompt is explicit about JSON-only, so a re-roll
+            # usually recovers. Any second failure is surfaced to the caller.
+            response = await self._call_model(prompt)
+            await self._record_turn(session_id, version, response)
+            return _parse(_extract_text(response))
 
     async def _call_model(self, prompt: str) -> Message:
         return await self._client.messages.create(
@@ -109,9 +118,21 @@ def _extract_text(response: Message) -> str:
     raise PlannerOutputError("model response contained no text block")
 
 
+def _strip_fences(text: str) -> str:
+    """Drop a leading ```json / ``` fence and trailing ``` if the model wrapped its JSON
+    despite the prompt (R6) — a common, cheap-to-tolerate deviation."""
+    stripped = text.strip()
+    if not stripped.startswith("```"):
+        return stripped
+    body = stripped[3:]
+    if body[:4].lower() == "json":
+        body = body[4:]
+    return body.rsplit("```", 1)[0].strip()
+
+
 def _parse(text: str) -> Plan:
     try:
-        payload = cast(object, json.loads(text))
+        payload = cast(object, json.loads(_strip_fences(text)))
     except json.JSONDecodeError as exc:
         raise PlannerOutputError(f"planner output was not JSON: {exc}") from exc
     try:

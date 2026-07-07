@@ -51,7 +51,13 @@ class _FakeRecorder:
         )
 
 
-def _make_message(text: str, *, input_tokens: int = 120, output_tokens: int = 240) -> Message:
+def _make_message(
+    text: str,
+    *,
+    input_tokens: int = 120,
+    output_tokens: int = 240,
+    stop_reason: str = "end_turn",
+) -> Message:
     """Build a real ``anthropic.types.Message`` — easier than mocking the whole shape."""
     return Message.model_construct(
         id="msg_test",
@@ -59,7 +65,7 @@ def _make_message(text: str, *, input_tokens: int = 120, output_tokens: int = 24
         role="assistant",
         model="claude-opus-4-7",
         content=[TextBlock(type="text", text=text, citations=None)],
-        stop_reason="end_turn",
+        stop_reason=stop_reason,
         stop_sequence=None,
         usage=Usage.model_construct(input_tokens=input_tokens, output_tokens=output_tokens),
     )
@@ -139,10 +145,10 @@ async def test_plan_retries_once_on_malformed_json() -> None:
 
     assert isinstance(plan, Plan)
     assert len(client.calls) == 2, "expected exactly one retry"
-    # Only the successful call is recorded — a failed parse never persists a turn.
-    assert len(recorder.calls) == 1
-    assert recorder.calls[0]["input_tokens"] == 110
-    assert recorder.calls[0]["output_tokens"] == 200
+    # R1: every model call is persisted, including the first (un-parseable) one.
+    assert len(recorder.calls) == 2
+    assert (recorder.calls[0]["input_tokens"], recorder.calls[0]["output_tokens"]) == (100, 50)
+    assert (recorder.calls[1]["input_tokens"], recorder.calls[1]["output_tokens"]) == (110, 200)
 
 
 @pytest.mark.asyncio
@@ -160,7 +166,8 @@ async def test_plan_raises_after_two_malformed_responses() -> None:
         await agent.plan("some task", uuid.uuid4())
 
     assert len(client.calls) == 2
-    assert recorder.calls == []
+    # R1: both failed calls are still on the ledger.
+    assert len(recorder.calls) == 2
 
 
 @pytest.mark.asyncio
@@ -175,3 +182,32 @@ async def test_plan_raises_when_json_shape_wrong() -> None:
         await agent.plan("some task", uuid.uuid4())
 
     assert len(client.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_plan_does_not_retry_on_max_tokens_truncation() -> None:
+    # A truncated response (invalid JSON) with stop_reason=max_tokens: retrying would
+    # truncate identically, so the planner surfaces it after one call, not two (R6).
+    recorder = _FakeRecorder()
+    client = _StubClient([_make_message('{"subtasks": [', stop_reason="max_tokens")])
+    agent = PlannerAgent(recorder=recorder, client=client, model="claude-opus-4-7")  # type: ignore[arg-type]
+
+    with pytest.raises(PlannerOutputError, match="truncated"):
+        await agent.plan("some task", uuid.uuid4())
+
+    assert len(client.calls) == 1, "must not retry a truncated response"
+    assert len(recorder.calls) == 1, "the one call is still recorded"
+
+
+@pytest.mark.asyncio
+async def test_plan_tolerates_markdown_fenced_json() -> None:
+    # The prompt asks for bare JSON, but a ```json fence is a common deviation (R6).
+    recorder = _FakeRecorder()
+    fenced = f"```json\n{_VALID_PLAN_JSON}\n```"
+    client = _StubClient([_make_message(fenced)])
+    agent = PlannerAgent(recorder=recorder, client=client, model="claude-opus-4-7")  # type: ignore[arg-type]
+
+    plan = await agent.plan("some task", uuid.uuid4())
+
+    assert isinstance(plan, Plan)
+    assert len(client.calls) == 1, "no retry needed — fence stripped"

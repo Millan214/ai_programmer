@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,4 +39,14 @@ async def update_phase(session: AsyncSession, session_id: uuid.UUID, phase: str)
     if task_session is None:
         raise ValueError(f"task_session {session_id} not found")
     task_session.phase = phase
+    await session.flush()
+
+
+async def close(session: AsyncSession, session_id: uuid.UUID) -> None:
+    """Stamp ``ended_at`` when a run terminates (any outcome). Idempotent-ish: a second
+    close just overwrites the timestamp, which is harmless."""
+    task_session = await session.get(TaskSession, session_id)
+    if task_session is None:
+        raise ValueError(f"task_session {session_id} not found")
+    task_session.ended_at = datetime.now(UTC)
     await session.flush()

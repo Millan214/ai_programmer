@@ -36,8 +36,13 @@ _FAKE_PR_HOST = "https://example.invalid/pr"
 
 
 def _verify_passed(facts: dict[str, object] | None) -> bool:
+    # Gate ship on the correctness-critical facts the Verifier reports (R3): build,
+    # typecheck, and tests must all pass — previously only build+tests were checked, so a
+    # change with type errors could ship. Lint is reported but *not* gated in Phase 0:
+    # style issues shouldn't block a green change, and a lint gate is a policy call that
+    # belongs to Phase 2's Reviewer.
     facts = facts or {}
-    return facts.get("build") == "pass" and facts.get("tests") == "pass"
+    return all(facts.get(check) == "pass" for check in ("build", "typecheck", "tests"))
 
 
 class Orchestrator:
@@ -56,6 +61,9 @@ class Orchestrator:
         self._verifier = verifier
         self._persistence = persistence
         self._sandbox_cleanup = sandbox_cleanup
+        # Compile the graph once (R16): the topology is fixed, and every ``execute`` shared
+        # the same MemorySaver anyway (runs are isolated by ``thread_id``, not by graph).
+        self._compiled = self.build_graph()
 
     @traced("orchestrator.plan")
     async def _plan_node(self, state: TaskState) -> dict[str, object]:
@@ -120,7 +128,6 @@ class Orchestrator:
         set_task_context(task_id)
         task = await self._persistence.load_task(task_id)
         session_id = await self._persistence.open_session(task_id)
-        compiled = self.build_graph()
         initial: TaskState = {
             "task_id": str(task_id),
             "session_id": str(session_id),
@@ -133,14 +140,30 @@ class Orchestrator:
             "budget_remaining": task["budget_remaining"],
         }
         config: RunnableConfig = {"configurable": {"thread_id": str(task_id)}}
-        final = cast(TaskState, await compiled.ainvoke(initial, config=config))
-        # ship_node sets ``completed`` when it runs; if Verify failed the route skipped
-        # ship and the run terminates here in ``failed_verify`` (no back-edge in Phase 0).
-        if final["phase"] != "ship":
-            await self._persistence.set_task_status(task_id, "failed_verify")
+        try:
+            final = cast(TaskState, await self._compiled.ainvoke(initial, config=config))
+            # ship_node sets ``completed`` when it runs; if Verify failed the route
+            # skipped ship and the run terminates in ``failed_verify`` (no back-edge in
+            # Phase 0).
+            if final["phase"] != "ship":
+                await self._persistence.set_task_status(task_id, "failed_verify")
+            await self._cleanup_sandbox(final["edits"])
+        except Exception:
+            # A raising planner/developer/verifier (e.g. a malformed LLM response or an
+            # unreachable service) must not leave the task dangling in a non-terminal
+            # state (R5). Mark it failed and re-raise so the caller/telemetry sees it.
+            await self._persistence.set_task_status(task_id, "failed")
+            raise
+        finally:
+            # Every terminal outcome — completed, failed_verify, or a crash — stamps the
+            # session's ``ended_at`` (R5: it was never set by any path before).
+            await self._persistence.close_session(session_id)
+
+    async def _cleanup_sandbox(self, edits: dict[str, object] | None) -> None:
         # A real Developer leaves its sandbox alive so Verify could inspect the worktree
         # (see ``developer.adapter``); the run is over now, tear it down.
-        if self._sandbox_cleanup is not None:
-            sandbox_id = (final["edits"] or {}).get("sandbox_id")
-            if isinstance(sandbox_id, str):
-                await self._sandbox_cleanup(sandbox_id)
+        if self._sandbox_cleanup is None:
+            return
+        sandbox_id = (edits or {}).get("sandbox_id")
+        if isinstance(sandbox_id, str):
+            await self._sandbox_cleanup(sandbox_id)

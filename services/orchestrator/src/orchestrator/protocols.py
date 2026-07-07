@@ -137,9 +137,13 @@ class FakeVerifier:
     """
 
     def __init__(self, facts: VerifierFacts | None = None) -> None:
+        # Default carries all four checks the real Verifier reports so the fake path
+        # exercises the full ship gate (build/typecheck/tests — R3).
         self._facts: VerifierFacts = facts if facts is not None else {
             "build": "pass",
+            "typecheck": "pass",
             "tests": "pass",
+            "lint": "pass",
         }
 
     async def verify(self, edits: EditsDict, session_id: uuid.UUID) -> VerifierFacts:

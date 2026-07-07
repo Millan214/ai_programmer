@@ -72,31 +72,33 @@ Full-codebase review after card 07 landed. Baseline was green (ruff clean, pyrig
 
 ### Violations of CLAUDE.md core principles
 
-- **R1 — Planner retry drops an LLM call from the audit trail**
-  (`agents/planner/src/planner/agent.py:55-65`). On the malformed-JSON retry path two API
-  calls are made but only the second response is persisted as an `agent_turn`. Breaks
-  principle 4 ("every LLM call is a persisted event"). Fix: record a turn per response.
+- **R1 — Planner retry drops an LLM call from the audit trail.** ✅ **Fixed.** `plan()`
+  now records an `agent_turn` for every model call (before the parse), so a call that
+  produced un-parseable output is still on the ledger. Principle 4 restored.
 - **R2 — Verifier facts are never persisted.** ✅ **Fixed.** `POST /verify` now takes an
   optional `session_id` and writes a `verifier_run` row (build/typecheck/tests/lint JSONB)
   before returning. Done in the service so every caller inherits it: the orchestrator's
   Verify node and the Developer's in-loop runs both thread `session_id` through. Callers
   without a session (ad-hoc verification) still get facts, no row.
-- **R3 — Ship gate ignores typecheck and lint**
-  (`services/orchestrator/src/orchestrator/graph.py:32-34`). `_verify_passed` checks only
-  `build` and `tests`; the real Verifier returns `typecheck`/`lint` too, so a change with
-  type errors ships. Either gate on all four or document the Phase 0 scope decision.
+- **R3 — Ship gate ignores typecheck and lint.** ✅ **Fixed (with a scope decision).**
+  `_verify_passed` now gates on build+typecheck+tests (a change with type errors no longer
+  ships). Lint is reported but *not* gated in Phase 0 — style shouldn't block a green
+  change; a lint gate is a Phase 2 Reviewer policy call. `FakeVerifier` default now carries
+  all four checks.
 - **R4 — No structured logging anywhere.** CLAUDE.md mandates structlog JSON with
-  `task_id`; no service or agent emits a single log line.
+  `task_id`; no service or agent emits a single log line. *(Still open.)*
 
 ### Correctness / robustness
 
-- **R5 — Failure paths leave task status dangling**
-  (`orchestrator/graph.py:100-119`). A raising planner or verifier exits `execute` via
-  exception and the task never reaches a terminal status; `task_session.ended_at` is never
-  set by any code path. Wrap `ainvoke`, record a failed status, set `ended_at`.
-- **R6 — Planner doesn't detect `max_tokens` truncation.** A truncated response fails
-  parsing and triggers a retry that will hit the same 2000-token cap. Check
-  `stop_reason == "max_tokens"`; also strip markdown code fences before JSON parse.
+- **R5 — Failure paths leave task status dangling.** ✅ **Fixed.** `execute()` wraps the
+  run in try/except/finally: a raising planner/developer/verifier marks the task `failed`
+  and re-raises; a `finally` calls the new `close_session` (repo `sessions.close`) to stamp
+  `task_session.ended_at` on *every* terminal outcome. Known remaining edge: an exception
+  after Build but before end-of-run can still leak the sandbox (its id isn't recoverable
+  from a raised `ainvoke`) — noted for a follow-up.
+- **R6 — Planner doesn't detect `max_tokens` truncation.** ✅ **Fixed.** `plan()` raises a
+  clear error instead of retrying when `stop_reason == "max_tokens"` (a re-roll would
+  truncate identically), and `_strip_fences` tolerates ```json``` wrapping before parse.
 - **R7 — Sandbox exec timeout leaves inconsistent state**
   (`services/sandbox/src/sandbox/controller.py:84-95`). On timeout: container killed but
   not removed, worktree left on disk, handle still registered, `docker exec` client
@@ -127,8 +129,9 @@ Full-codebase review after card 07 landed. Baseline was green (ruff clean, pyrig
   CHECK/Literal.
 - **R15** — Per-call `httpx.AsyncClient` in Graphify/CRG clients and
   `VerifierHttpClient`; hold one client per instance or use FastAPI lifespan.
-- **R16** — `build_graph()` recompiles per `execute()`; `registry.active_version`
-  re-reads `versions.toml` every call.
+- **R16** — ✅ **Partially fixed.** Graph is now compiled once in `Orchestrator.__init__`
+  (`self._compiled`), not per `execute()`. `registry.active_version` still re-reads
+  `versions.toml` every call — cheap, left for later.
 - **R17** — Evidence loss on failure: `parse_vitest_json` fallback returns bare `fail`
   with no output tail; typecheck fail with zero parsed errors discards raw output.
 - **R18** — `exec` shadows the builtin in the sandbox module.
